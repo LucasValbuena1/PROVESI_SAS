@@ -1,0 +1,34 @@
+_format_version: "2.1"
+
+services:
+  - name: order_service
+    protocol: http
+    host: order_upstream
+    routes:
+      - name: order
+        paths:
+          - /
+        strip_path: false
+
+upstreams:
+  - name: order_upstream
+    targets:
+      - target: <ip-privada-order-app-a>:8080
+        weight: 100
+      - target: <ip-privada-order-app-b>:8080
+        weight: 100
+      - target: <ip-privada-order-app-c>:8080
+        weight: 100
+    # Opcional: healthchecks (descomenta y ajusta si los usas)
+    # healthchecks:
+    #   threshold: 0
+    #   active:
+    #     http_path: /health
+    #     healthy:
+    #       successes: 2
+    #       interval: 5
+    #     unhealthy:
+    #       http_failures: 5
+    #       tcp_failures: 5
+    #       timeouts: 5
+    #       interval: 5
