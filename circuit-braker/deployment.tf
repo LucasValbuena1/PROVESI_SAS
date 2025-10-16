@@ -176,4 +176,98 @@ resource "aws_instance" "database" {
 
 # -------------------- App Django (3 instancias) --------------------
 resource "aws_instance" "order" {
-  for_each = t_
+  for_each = toset(["a", "b", "c"])
+
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = var.instance_type
+  associate_public_ip_address = true
+  vpc_security_group_ids      = [aws_security_group.traffic_django.id, aws_security_group.traffic_ssh.id]
+
+  user_data = <<-'EOT'
+              #!/bin/bash
+              set -euo pipefail
+              export DEBIAN_FRONTEND=noninteractive
+
+              DATABASE_HOST="${aws_instance.database.private_ip}"
+              GIT_REPO="https://github.com/LucasValbuena1/PROVESI_SAS.git"
+              GIT_BRANCH="Circuit-Breaker"
+              PROJECT_DIR="/main/PROVESI_SAS"
+              VENV_DIR="${PROJECT_DIR}/venv"
+              SERVICE_NAME="provesi"
+
+              apt-get update -y
+              apt-get install -y python3 python3-pip python3-venv git build-essential libpq-dev python3-dev
+
+              mkdir -p /main
+              cd /main
+
+              if [ ! -d "${PROJECT_DIR}" ]; then
+                git clone "${GIT_REPO}" "${PROJECT_DIR}"
+              fi
+
+              cd "${PROJECT_DIR}"
+              git fetch --all
+              git checkout "${GIT_BRANCH}" || git checkout -b "${GIT_BRANCH}" "origin/${GIT_BRANCH}" || true
+              git pull origin "${GIT_BRANCH}" || true
+
+              python3 -m venv "${VENV_DIR}"
+              "${VENV_DIR}/bin/pip" install --upgrade pip
+              "${VENV_DIR}/bin/pip" install django djangorestframework gunicorn psycopg2-binary || true
+
+              if [ -f requirements.txt ]; then
+                "${VENV_DIR}/bin/pip" install -r requirements.txt || true
+              fi
+
+              grep -q "^DATABASE_HOST=" /etc/environment 2>/dev/null || echo "DATABASE_HOST=${DATABASE_HOST}" >> /etc/environment
+              grep -q "^DJANGO_SETTINGS_MODULE=" /etc/environment 2>/dev/null || echo "DJANGO_SETTINGS_MODULE=PROVESI_SAS.settings" >> /etc/environment
+
+              "${VENV_DIR}/bin/python" manage.py makemigrations --noinput || true
+              "${VENV_DIR}/bin/python" manage.py migrate --noinput || true
+
+              cat > /etc/systemd/system/${SERVICE_NAME}.service << SERVICE_EOF
+              [Unit]
+              Description=Gunicorn instance to serve PROVESI_SAS
+              After=network.target
+
+              [Service]
+              Type=simple
+              EnvironmentFile=/etc/environment
+              WorkingDirectory=${PROJECT_DIR}
+              ExecStart=${VENV_DIR}/bin/gunicorn --workers 3 --bind 0.0.0.0:8080 PROVESI_SAS.wsgi:application
+              Restart=always
+              RestartSec=5
+
+              [Install]
+              WantedBy=multi-user.target
+              SERVICE_EOF
+
+              systemctl daemon-reload
+              systemctl enable ${SERVICE_NAME}.service
+              systemctl start ${SERVICE_NAME}.service
+
+              journalctl -u ${SERVICE_NAME}.service -n 100 --no-pager > /var/log/${SERVICE_NAME}-boot.log || true
+              EOT
+
+  tags = merge(local.common_tags, {
+    Name = "${var.project_prefix}-order-${each.key}"
+    Role = "order-app"
+  })
+
+  depends_on = [aws_instance.database]
+}
+
+# -------------------- Salidas --------------------
+output "kong_public_ip" {
+  description = "Public IP address for the Kong circuit breaker instance"
+  value       = aws_instance.kong.public_ip
+}
+
+output "order_public_ip" {
+  description = "Public IP addresses for the order service application"
+  value       = { for id, instance in aws_instance.order : id => instance.public_ip }
+}
+
+output "database_private_ip" {
+  description = "Private IP address for the PostgreSQL database instance"
+  value       = aws_instance.database.private_ip
+}
