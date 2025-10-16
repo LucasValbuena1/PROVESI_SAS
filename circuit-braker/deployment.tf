@@ -14,7 +14,9 @@
 # 2. Instancias EC2:
 #    - cbd-kong
 #    - cbd-db (PostgreSQL instalado y configurado)
-#    - cbd-monitoring (Monitoring app instalada y migraciones aplicadas)
+#    - cbd-monitoring-a
+#    - cbd-monitoring-b
+#    - cbd-monitoring-c
 #    - cbd-alarms-a (Monitoring app instalada)
 #    - cbd-alarms-b (Monitoring app instalada)
 #    - cbd-alarms-c (Monitoring app instalada)
@@ -48,7 +50,7 @@ provider "aws" {
 
 # Variables locales usadas en la configuración de Terraform.
 locals {
-  project_name = "${var.project_prefix}-circuit-breaker"
+  project_name = "${var.project_prefix}"
   repository   = "https://github.com/ISIS2503/ISIS2503-MonitoringApp.git"
   branch       = "Circuit-Breaker"
 
@@ -95,7 +97,7 @@ resource "aws_security_group" "traffic_django" {
 # Recurso. Define el grupo de seguridad para el tráfico del Circuit Breaker (8000, 8001).
 resource "aws_security_group" "traffic_cb" {
   name        = "${var.project_prefix}-traffic-cb"
-  description = "Expose Kong circuit breaker ports"
+  description = "Expose Kong ports"
 
   ingress {
     description = "Kong traffic"
@@ -174,7 +176,7 @@ resource "aws_instance" "kong" {
 resource "aws_instance" "database" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
-  associate_public_ip_address = true
+  associate_public_ip_address = false
   vpc_security_group_ids      = [aws_security_group.traffic_db.id, aws_security_group.traffic_ssh.id]
 
   user_data = <<-EOT
@@ -197,48 +199,12 @@ resource "aws_instance" "database" {
   })
 }
 
-# Recurso. Define las instancias EC2 para el servicio de alarmas de la aplicación de Monitoring.
-# Se crean tres instancias (a, b, c) usando un bucle.
-# Cada instancia incluye un script de creación para instalar la aplicación de Monitoring.
-resource "aws_instance" "alarms" {
-  for_each = toset(["a", "b", "c"])
-
-  ami                         = data.aws_ami.ubuntu.id
-  instance_type               = var.instance_type
-  associate_public_ip_address = true
-  vpc_security_group_ids      = [aws_security_group.traffic_django.id, aws_security_group.traffic_ssh.id]
-
-  user_data = <<-EOT
-              #!/bin/bash
-              sudo export DATABASE_HOST=${aws_instance.database.private_ip}
-              echo "DATABASE_HOST=${aws_instance.database.private_ip}" | sudo tee -a /etc/environment
-
-              sudo apt-get update -y
-              sudo apt-get install -y python3-pip git build-essential libpq-dev python3-dev
-
-              mkdir -p /labs
-              cd /labs
-
-              if [ ! -d ISIS2503-MonitoringApp ]; then
-                git clone ${local.repository}
-              fi
-
-              cd ISIS2503-MonitoringApp
-              git fetch origin ${local.branch}
-              git checkout ${local.branch}
-              sudo pip3 install --upgrade pip --break-system-packages
-              sudo pip3 install -r requirements.txt --break-system-packages
-              EOT
-
-  tags = merge(local.common_tags, {
-    Name = "${var.project_prefix}-alarms-${each.key}"
-    Role = "alarms"
-  })
-}
 
 # Recurso. Define la instancia EC2 para la aplicación de Monitoring (Django).
 # Esta instancia incluye un script de creación para instalar la aplicación de Monitoring y aplicar las migraciones.
-resource "aws_instance" "monitoring" {
+resource "aws_instance" "order" {
+  for_each = toset(["a", "b", "c"])
+
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
   associate_public_ip_address = true
@@ -271,8 +237,8 @@ resource "aws_instance" "monitoring" {
               EOT
 
   tags = merge(local.common_tags, {
-    Name = "${var.project_prefix}-monitoring"
-    Role = "monitoring-app"
+    Name = "${var.project_prefix}-order-${each.key}"
+    Role = "order-app"
   })
 
   depends_on = [aws_instance.database]
@@ -284,28 +250,16 @@ output "kong_public_ip" {
   value       = aws_instance.kong.public_ip
 }
 
-# Salida. Muestra las direcciones IP públicas de las instancias de la aplicación de alarmas.
-output "alarms_public_ips" {
-  description = "Public IP addresses for the alarms service instances"
-  value       = { for id, instance in aws_instance.alarms : id => instance.public_ip }
-}
-
 # Salida. Muestra la dirección IP pública de la instancia de la aplicación de Monitoring.
-output "monitoring_public_ip" {
-  description = "Public IP address for the monitoring service application"
-  value       = aws_instance.monitoring.public_ip
-}
-
-# Salida. Muestra las direcciones IP privadas de las instancias de la aplicación de alarmas.
-output "alarms_private_ips" {
-  description = "Private IP addresses for the alarms service instances"
-  value       = { for id, instance in aws_instance.alarms : id => instance.private_ip }
+output "order_public_ip" {
+  description = "Public IP address for the order service application"
+  value       = { for id, instance in aws_instance.order : id => instance.private_ip }
 }
 
 # Salida. Muestra la dirección IP privada de la instancia de la aplicación de Monitoring.
-output "monitoring_private_ip" {
-  description = "Private IP address for the monitoring service application"
-  value       = aws_instance.monitoring.private_ip
+output "order_private_ip" {
+  description = "Private IP address for the order service application"
+  value       = {for id, instance in aws_instance.order : id => instance.private_ip }
 }
 
 # Salida. Muestra la dirección IP privada de la instancia de la base de datos PostgreSQL.
