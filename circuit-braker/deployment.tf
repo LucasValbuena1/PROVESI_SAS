@@ -210,36 +210,48 @@
     associate_public_ip_address = true
     vpc_security_group_ids      = [aws_security_group.traffic_django.id, aws_security_group.traffic_ssh.id]
 
-    user_data = <<-EOT
-                #!/bin/bash
+user_data = <<-EOT
+              #!/bin/bash
+              set -e  # detener el script si algo falla
 
-                sudo export DATABASE_HOST=${aws_instance.database.private_ip}
-                echo "DATABASE_HOST=${aws_instance.database.private_ip}" | sudo tee -a /etc/environment
+              # ==== Variables de entorno ====
+              export DEBIAN_FRONTEND=noninteractive
+              export DATABASE_HOST=${aws_instance.database.private_ip}
+              echo "DATABASE_HOST=${aws_instance.database.private_ip}" | sudo tee -a /etc/environment
 
-                sudo apt-get update -y
-                sudo apt-get install -y python3-pip python3-venv git build-essential libpq-dev python3-dev
+              # ==== Instalación de dependencias ====
+              sudo apt-get update -y
+              sudo apt-get install -y python3 python3-pip python3-venv git build-essential libpq-dev python3-dev
 
-                mkdir -p /main
-                cd /main
+              # ==== Preparar directorio ====
+              mkdir -p /main
+              cd /main
 
-                if [ ! -d PROVESI_SAS ]; then
-                  git clone ${local.repository}
-                fi
+              # ==== Clonar repositorio ====
+              if [ ! -d PROVESI_SAS ]; then
+                git clone ${local.repository} PROVESI_SAS
+              fi
 
-                cd PROVESI_SAS
-                git fetch origin ${local.branch}
-                git checkout ${local.branch}
+              cd PROVESI_SAS
+              git fetch origin ${local.branch}
+              git checkout ${local.branch}
 
-                # Crear y activar entorno virtual
-                python3 -m venv venv
-                source venv/bin/activate
+              # ==== Crear entorno virtual ====
+              python3 -m venv venv
+              source venv/bin/activate
 
-                pip install --upgrade pip
-                pip install -r requirements.txt
+              # ==== Instalar dependencias manualmente (sin requirements.txt) ====
+              pip install --upgrade pip
+              pip install django djangorestframework psycopg2-binary gunicorn
 
-                python manage.py makemigrations
-                python manage.py migrate
-                EOT
+              # ==== Migraciones ====
+              python manage.py makemigrations
+              python manage.py migrate
+
+              # ==== Iniciar servidor (opcional) ====
+              nohup python manage.py runserver 0.0.0.0:8080 &
+            EOT
+
 
     tags = merge(local.common_tags, {
       Name = "${var.project_prefix}-order-${each.key}"
