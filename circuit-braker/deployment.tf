@@ -1,269 +1,280 @@
 # ***************** Universidad de los Andes ***********************
-  # ****** Departamento de Ingeniería de Sistemas y Computación ******
-  # ********** Arquitectura y diseño de Software - ISIS2503 **********
-  #
-  # Infraestructura para laboratorio de Circuit Breaker
-  #
-  # Elementos a desplegar en AWS:
-  # 1. Grupos de seguridad:
-  #    - cbd-traffic-django (puerto 8080)
-  #    - cbd-traffic-cb (puertos 8000 y 8001)
-  #    - cbd-traffic-db (puerto 5432)
-  #    - cbd-traffic-ssh (puerto 22)
-  #
-  # 2. Instancias EC2:
-  #    - cbd-kong
-  #    - cbd-db (PostgreSQL instalado y configurado)
-  #    - cbd-monitoring-a
-  #    - cbd-monitoring-b
-  #    - cbd-monitoring-c
-  #    - cbd-alarms-a (Monitoring app instalada)
-  #    - cbd-alarms-b (Monitoring app instalada)
-  #    - cbd-alarms-c (Monitoring app instalada)
-  # ******************************************************************
+# ****** Departamento de Ingeniería de Sistemas y Computación ******
+# ********** Arquitectura y diseño de Software - ISIS2503 **********
+#
+# Infraestructura para laboratorio de Circuit Breaker
+#
+# ******************************************************************
 
-  # Variable. Define la región de AWS donde se desplegará la infraestructura.
-  variable "region" {
-    description = "AWS region for deployment"
-    type        = string
-    default     = "us-east-1"
+variable "region" {
+  description = "AWS region for deployment"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "project_prefix" {
+  description = "Prefix used for naming AWS resources"
+  type        = string
+  default     = "cbd"
+}
+
+variable "instance_type" {
+  description = "EC2 instance type for application hosts"
+  type        = string
+  default     = "t2.nano"
+}
+
+provider "aws" {
+  region = var.region
+}
+
+locals {
+  project_name = "${var.project_prefix}"
+  repository   = "https://github.com/LucasValbuena1/PROVESI_SAS.git"
+  branch       = "Circuit-Breaker"
+
+  common_tags = {
+    Project   = local.project_name
+    ManagedBy = "Terraform"
+  }
+}
+
+# Imagen base de Ubuntu 24.04
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"]
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
   }
 
-  # Variable. Define el prefijo usado para nombrar los recursos en AWS.
-  variable "project_prefix" {
-    description = "Prefix used for naming AWS resources"
-    type        = string
-    default     = "cbd"
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+# ===================== GRUPOS DE SEGURIDAD ======================
+
+resource "aws_security_group" "traffic_django" {
+  name        = "${var.project_prefix}-traffic-django"
+  description = "Allow application traffic on port 8080"
+
+  ingress {
+    description = "HTTP access for service layer"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Variable. Define el tipo de instancia EC2 a usar para las máquinas virtuales.
-  variable "instance_type" {
-    description = "EC2 instance type for application hosts"
-    type        = string
-    default     = "t2.nano"
+  tags = merge(local.common_tags, {
+    Name = "${var.project_prefix}-traffic-services"
+  })
+}
+
+resource "aws_security_group" "traffic_cb" {
+  name        = "${var.project_prefix}-traffic-cb"
+  description = "Expose Kong ports"
+
+  ingress {
+    description = "Kong traffic"
+    from_port   = 8000
+    to_port     = 8001
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Proveedor. Define el proveedor de infraestructura (AWS) y la región.
-  provider "aws" {
-    region = var.region
+  tags = merge(local.common_tags, {
+    Name = "${var.project_prefix}-traffic-cb"
+  })
+}
+
+resource "aws_security_group" "traffic_db" {
+  name        = "${var.project_prefix}-traffic-db"
+  description = "Allow PostgreSQL access"
+
+  ingress {
+    description = "Traffic from anywhere to DB"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Variables locales usadas en la configuración de Terraform.
-  locals {
-    project_name = "${var.project_prefix}"
-    repository   = "https://github.com/LucasValbuena1/PROVESI_SAS.git"
-    branch       = "Circuit-Breaker"
+  tags = merge(local.common_tags, {
+    Name = "${var.project_prefix}-traffic-db"
+  })
+}
 
-    common_tags = {
-      Project   = local.project_name
-      ManagedBy = "Terraform"
-    }
+resource "aws_security_group" "traffic_ssh" {
+  name        = "${var.project_prefix}-traffic-ssh"
+  description = "Allow SSH access"
+
+  ingress {
+    description = "SSH access from anywhere"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Data Source. Busca la AMI más reciente de Ubuntu 24.04 usando los filtros especificados.
-  data "aws_ami" "ubuntu" {
-      most_recent = true
-      owners      = ["099720109477"]
-
-      filter {
-          name   = "name"
-          values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
-      }
-
-      filter {
-          name   = "virtualization-type"
-          values = ["hvm"]
-      }
+  egress {
+    description = "Allow all outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Recurso. Define el grupo de seguridad para el tráfico de Django (8080).
-  resource "aws_security_group" "traffic_django" {
-      name        = "${var.project_prefix}-traffic-django"
-      description = "Allow application traffic on port 8080"
+  tags = merge(local.common_tags, {
+    Name = "${var.project_prefix}-traffic-ssh"
+  })
+}
 
-      ingress {
-          description = "HTTP access for service layer"
-          from_port   = 8080
-          to_port     = 8080
-          protocol    = "tcp"
-          cidr_blocks = ["0.0.0.0/0"]
-      }
+# ===================== INSTANCIAS ======================
 
-      tags = merge(local.common_tags, {
-          Name = "${var.project_prefix}-traffic-services"
-      })
-  }
+# Kong
+resource "aws_instance" "kong" {
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = var.instance_type
+  associate_public_ip_address = true
+  vpc_security_group_ids      = [aws_security_group.traffic_cb.id, aws_security_group.traffic_ssh.id]
 
-  # Recurso. Define el grupo de seguridad para el tráfico del Circuit Breaker (8000, 8001).
-  resource "aws_security_group" "traffic_cb" {
-    name        = "${var.project_prefix}-traffic-cb"
-    description = "Expose Kong ports"
+  tags = merge(local.common_tags, {
+    Name = "${var.project_prefix}-kong"
+    Role = "circuit-breaker"
+  })
+}
 
-    ingress {
-      description = "Kong traffic"
-      from_port   = 8000
-      to_port     = 8001
-      protocol    = "tcp"
-      cidr_blocks = ["0.0.0.0/0"]
-    }
+# PostgreSQL
+resource "aws_instance" "database" {
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = var.instance_type
+  associate_public_ip_address = false
+  vpc_security_group_ids      = [aws_security_group.traffic_db.id, aws_security_group.traffic_ssh.id]
 
-    tags = merge(local.common_tags, {
-      Name = "${var.project_prefix}-traffic-cb"
-    })
-  }
+  user_data = <<-EOT
+              #!/bin/bash
+              set -e
+              sudo apt-get update -y
+              sudo apt-get install -y postgresql postgresql-contrib
+              sudo -u postgres psql -c "CREATE USER order_user WITH PASSWORD 'isis2503';"
+              sudo -u postgres createdb -O order_user order_db
+              echo "host all all 0.0.0.0/0 trust" | sudo tee -a /etc/postgresql/16/main/pg_hba.conf
+              echo "listen_addresses='*'" | sudo tee -a /etc/postgresql/16/main/postgresql.conf
+              echo "max_connections=2000" | sudo tee -a /etc/postgresql/16/main/postgresql.conf
+              sudo systemctl restart postgresql
+              EOT
 
-  # Recurso. Define el grupo de seguridad para el tráfico de la base de datos (5432).
-  resource "aws_security_group" "traffic_db" {
-    name        = "${var.project_prefix}-traffic-db"
-    description = "Allow PostgreSQL access"
+  tags = merge(local.common_tags, {
+    Name = "${var.project_prefix}-db"
+    Role = "database"
+  })
+}
 
-    ingress {
-      description = "Traffic from anywhere to DB"
-      from_port   = 5432
-      to_port     = 5432
-      protocol    = "tcp"
-      cidr_blocks = ["0.0.0.0/0"]
-    }
+# Django app (3 instancias)
+resource "aws_instance" "order" {
+  for_each = toset(["a", "b", "c"])
 
-    tags = merge(local.common_tags, {
-      Name = "${var.project_prefix}-traffic-db"
-    })
-  }
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = var.instance_type
+  associate_public_ip_address = true
+  vpc_security_group_ids      = [aws_security_group.traffic_django.id, aws_security_group.traffic_ssh.id]
 
-  # Recurso. Define el grupo de seguridad para el tráfico SSH (22) y permite todo el tráfico saliente.
-  resource "aws_security_group" "traffic_ssh" {
-    name        = "${var.project_prefix}-traffic-ssh"
-    description = "Allow SSH access"
+  user_data = <<-EOT
+              #!/bin/bash
+              set -euo pipefail
+              export DEBIAN_FRONTEND=noninteractive
 
-    ingress {
-      description = "SSH access from anywhere"
-      from_port   = 22
-      to_port     = 22
-      protocol    = "tcp"
-      cidr_blocks = ["0.0.0.0/0"]
-    }
+              DATABASE_HOST="${aws_instance.database.private_ip}"
+              GIT_REPO="${local.repository}"
+              GIT_BRANCH="${local.branch}"
+              PROJECT_DIR="/main/PROVESI_SAS"
+              VENV_DIR="${PROJECT_DIR}/venv"
+              SERVICE_NAME="provesi"
 
-    egress {
-      description = "Allow all outbound traffic"
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"
-      cidr_blocks = ["0.0.0.0/0"]
-    }
+              apt-get update -y
+              apt-get install -y python3 python3-pip python3-venv git build-essential libpq-dev python3-dev
 
-    tags = merge(local.common_tags, {
-      Name = "${var.project_prefix}-traffic-ssh"
-    })
-  }
+              mkdir -p /main
+              cd /main
 
-  # Recurso. Define la instancia EC2 para Kong (Circuit Breaker).
-  # Esta instancia se crea planamente sin configuración adicional.
-  resource "aws_instance" "kong" {
-    ami                         = data.aws_ami.ubuntu.id
-    instance_type               = var.instance_type
-    associate_public_ip_address = true
-    vpc_security_group_ids      = [aws_security_group.traffic_cb.id, aws_security_group.traffic_ssh.id]
+              if [ ! -d "${PROJECT_DIR}" ]; then
+                git clone "${GIT_REPO}" "${PROJECT_DIR}"
+              fi
 
-    tags = merge(local.common_tags, {
-      Name = "${var.project_prefix}-kong"
-      Role = "circuit-Breaker"
-    })
-  }
+              cd "${PROJECT_DIR}"
+              git fetch --all
+              git checkout "${GIT_BRANCH}" || git checkout -b "${GIT_BRANCH}" "origin/${GIT_BRANCH}" || true
+              git pull origin "${GIT_BRANCH}" || true
 
-  # Recurso. Define la instancia EC2 para la base de datos PostgreSQL.
-  # Esta instancia incluye un script de creación para instalar y configurar PostgreSQL.
-  # El script crea un usuario y una base de datos, y ajusta la configuración para permitir conexiones remotas.
-  resource "aws_instance" "database" {
-    ami                         = data.aws_ami.ubuntu.id
-    instance_type               = var.instance_type
-    associate_public_ip_address = false
-    vpc_security_group_ids      = [aws_security_group.traffic_db.id, aws_security_group.traffic_ssh.id]
+              python3 -m venv "${VENV_DIR}"
+              "${VENV_DIR}/bin/pip" install --upgrade pip
 
-    user_data = <<-EOT
-                #!/bin/bash
+              if [ -f requirements.txt ]; then
+                "${VENV_DIR}/bin/pip" install -r requirements.txt || true
+              fi
 
-                sudo apt-get update -y
-                sudo apt-get install -y postgresql postgresql-contrib
+              "${VENV_DIR}/bin/pip" install django djangorestframework gunicorn psycopg2-binary || true
 
-                sudo -u postgres psql -c "CREATE USER order_user WITH PASSWORD 'isis2503';"
-                sudo -u postgres createdb -O order_user order_db
-                echo "host all all 0.0.0.0/0 trust" | sudo tee -a /etc/postgresql/16/main/pg_hba.conf
-                echo "listen_addresses='*'" | sudo tee -a /etc/postgresql/16/main/postgresql.conf
-                echo "max_connections=2000" | sudo tee -a /etc/postgresql/16/main/postgresql.conf
-                sudo service postgresql restart
-                EOT
+              grep -q "^DATABASE_HOST=" /etc/environment 2>/dev/null || echo "DATABASE_HOST=${DATABASE_HOST}" >> /etc/environment
+              grep -q "^DJANGO_SETTINGS_MODULE=" /etc/environment 2>/dev/null || echo "DJANGO_SETTINGS_MODULE=PROVESI_SAS.settings" >> /etc/environment
 
-    tags = merge(local.common_tags, {
-      Name = "${var.project_prefix}-db"
-      Role = "database"
-    })
-  }
+              "${VENV_DIR}/bin/python" manage.py makemigrations --noinput || true
+              "${VENV_DIR}/bin/python" manage.py migrate --noinput || true
 
+              cat > /etc/systemd/system/${SERVICE_NAME}.service << SERVICE_EOF
+              [Unit]
+              Description=Gunicorn instance to serve PROVESI_SAS
+              After=network.target
 
-  # Recurso. Define la instancia EC2 para la aplicación de Monitoring (Django).
-  # Esta instancia incluye un script de creación para instalar la aplicación de Monitoring y aplicar las migraciones.
-  resource "aws_instance" "order" {
-    for_each = toset(["a", "b", "c"])
+              [Service]
+              Type=simple
+              EnvironmentFile=/etc/environment
+              WorkingDirectory=${PROJECT_DIR}
+              ExecStart=${VENV_DIR}/bin/gunicorn --workers 3 --bind 0.0.0.0:8080 PROVESI_SAS.wsgi:application
+              Restart=always
+              RestartSec=5
 
-    ami                         = data.aws_ami.ubuntu.id
-    instance_type               = var.instance_type
-    associate_public_ip_address = true
-    vpc_security_group_ids      = [aws_security_group.traffic_django.id, aws_security_group.traffic_ssh.id]
+              [Install]
+              WantedBy=multi-user.target
+              SERVICE_EOF
 
-    user_data = <<-EOT
-                #!/bin/bash
+              systemctl daemon-reload
+              systemctl enable ${SERVICE_NAME}.service
+              systemctl start ${SERVICE_NAME}.service
 
-                sudo export DATABASE_HOST=${aws_instance.database.private_ip}
-                echo "DATABASE_HOST=${aws_instance.database.private_ip}" | sudo tee -a /etc/environment
+              journalctl -u ${SERVICE_NAME}.service -n 100 --no-pager > /var/log/${SERVICE_NAME}-boot.log || true
+              EOT
 
-                sudo apt-get update -y
-                sudo apt-get install -y python3-pip git build-essential libpq-dev python3-dev
+  tags = merge(local.common_tags, {
+    Name = "${var.project_prefix}-order-${each.key}"
+    Role = "order-app"
+  })
 
-                mkdir -p /main
-                cd /main
+  depends_on = [aws_instance.database]
+}
 
-                if [ ! -d ISIS2503-OrderApp ]; then
-                  git clone ${local.repository}
-                fi
+# ===================== SALIDAS ======================
 
-                cd ISIS2503-OrderApp
-                git fetch origin ${local.branch}
-                git checkout ${local.branch}
-                sudo pip3 install --upgrade pip --break-system-packages
-                sudo pip3 install -r requirements.txt --break-system-packages
+output "kong_public_ip" {
+  description = "Public IP address for the Kong circuit breaker instance"
+  value       = aws_instance.kong.public_ip
+}
 
-                sudo python3 manage.py makemigrations
-                sudo python3 manage.py migrate
-                EOT
+output "order_public_ip" {
+  description = "Public IP address for the order service application"
+  value       = { for id, instance in aws_instance.order : id => instance.public_ip }
+}
 
-    tags = merge(local.common_tags, {
-      Name = "${var.project_prefix}-order-${each.key}"
-      Role = "order-app"
-    })
+output "order_private_ip" {
+  description = "Private IP address for the order service application"
+  value       = { for id, instance in aws_instance.order : id => instance.private_ip }
+}
 
-    depends_on = [aws_instance.database]
-  }
-
-  # Salida. Muestra la dirección IP pública de la instancia de Kong (Circuit Breaker).
-  output "kong_public_ip" {
-    description = "Public IP address for the Kong circuit breaker instance"
-    value       = aws_instance.kong.public_ip
-  }
-
-  # Salida. Muestra la dirección IP pública de la instancia de la aplicación de Monitoring.
-  output "order_public_ip" {
-    description = "Public IP address for the order service application"
-    value       = { for id, instance in aws_instance.order : id => instance.private_ip }
-  }
-
-  # Salida. Muestra la dirección IP privada de la instancia de la aplicación de Monitoring.
-  output "order_private_ip" {
-    description = "Private IP address for the order service application"
-    value       = {for id, instance in aws_instance.order : id => instance.private_ip }
-  }
-
-  # Salida. Muestra la dirección IP privada de la instancia de la base de datos PostgreSQL.
-  output "database_private_ip" {
-    description = "Private IP address for the PostgreSQL database instance"
-    value       = aws_instance.database.private_ip
-  }
+output "database_private_ip" {
+  description = "Private IP address for the PostgreSQL database instance"
+  value       = aws_instance.database.private_ip
+}
