@@ -1,27 +1,3 @@
-# ***************** Universidad de los Andes ***********************
-  # ****** Departamento de Ingeniería de Sistemas y Computación ******
-  # ********** Arquitectura y diseño de Software - ISIS2503 **********
-  #
-  # Infraestructura para laboratorio de Circuit Breaker
-  #
-  # Elementos a desplegar en AWS:
-  # 1. Grupos de seguridad:
-  #    - cbd-traffic-django (puerto 8080)
-  #    - cbd-traffic-cb (puertos 8000 y 8001)
-  #    - cbd-traffic-db (puerto 5432)
-  #    - cbd-traffic-ssh (puerto 22)
-  #
-  # 2. Instancias EC2:
-  #    - cbd-kong
-  #    - cbd-db (PostgreSQL instalado y configurado)
-  #    - cbd-monitoring-a
-  #    - cbd-monitoring-b
-  #    - cbd-monitoring-c
-  #    - cbd-alarms-a (Monitoring app instalada)
-  #    - cbd-alarms-b (Monitoring app instalada)
-  #    - cbd-alarms-c (Monitoring app instalada)
-  # ******************************************************************
-
   # Variable. Define la región de AWS donde se desplegará la infraestructura.
   variable "region" {
     description = "AWS region for deployment"
@@ -33,7 +9,7 @@
   variable "project_prefix" {
     description = "Prefix used for naming AWS resources"
     type        = string
-    default     = "cbd"
+    default     = "wms"
   }
 
   # Variable. Define el tipo de instancia EC2 a usar para las máquinas virtuales.
@@ -185,8 +161,8 @@
                 sudo apt-get update -y
                 sudo apt-get install -y postgresql postgresql-contrib
 
-                sudo -u postgres psql -c "CREATE USER order_user WITH PASSWORD 'isis2503';"
-                sudo -u postgres createdb -O order_user order_db
+                sudo -u postgres psql -c "CREATE USER inventario_user WITH PASSWORD 'isis2503';"
+                sudo -u postgres createdb -O inventario_user inventario_db
                 echo "host all all 0.0.0.0/0 trust" | sudo tee -a /etc/postgresql/16/main/pg_hba.conf
                 echo "listen_addresses='*'" | sudo tee -a /etc/postgresql/16/main/postgresql.conf
                 echo "max_connections=2000" | sudo tee -a /etc/postgresql/16/main/postgresql.conf
@@ -202,8 +178,8 @@
 
   # Recurso. Define la instancia EC2 para la aplicación de Monitoring (Django).
   # Esta instancia incluye un script de creación para instalar la aplicación de Monitoring y aplicar las migraciones.
-  resource "aws_instance" "order" {
-    for_each = toset(["a", "b", "c"])
+  resource "aws_instance" "inventario" {
+    for_each = toset(["a"])
 
     ami                         = data.aws_ami.ubuntu.id
     instance_type               = var.instance_type
@@ -254,8 +230,8 @@ user_data = <<-EOT
 
 
     tags = merge(local.common_tags, {
-      Name = "${var.project_prefix}-order-${each.key}"
-      Role = "order-app"
+      Name = "${var.project_prefix}-inventario-${each.key}"
+      Role = "inventario-app"
     })
 
     depends_on = [aws_instance.database]
@@ -268,19 +244,19 @@ user_data = <<-EOT
   }
 
   # Salida. Muestra la dirección IP pública de la instancia de la aplicación de Monitoring.
-  output "order_public_ip" {
-    description = "Public IP address for the order service application"
-    value       = { for id, instance in aws_instance.order : id => instance.private_ip }
+  output "inventario_public_ip" {
+    description = "Public IP address for the inventario service application"
+    value       = { for id, instance in aws_instance.inventario : id => instance.private_ip }
   }
 
   # Salida. Muestra la dirección IP privada de la instancia de la aplicación de Monitoring.
-  output "order_private_ip" {
-    description = "Private IP address for the order service application"
-    value       = {for id, instance in aws_instance.order : id => instance.private_ip }
+  output "inventario_private_ip" {
+    description = "Private IP address for the inventario service application"
+    value       = {for id, instance in aws_instance.inventario : id => instance.private_ip }
   }
 
   # Salida. Muestra la dirección IP privada de la instancia de la base de datos PostgreSQL.
   output "database_private_ip" {
     description = "Private IP address for the PostgreSQL database instance"
     value       = aws_instance.database.private_ip
-  }
+}
