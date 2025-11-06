@@ -1,4 +1,4 @@
-  # Variable. Define la región de AWS donde se desplegará la infraestructura.
+# Variable. Define la región de AWS donde se desplegará la infraestructura.
   variable "region" {
     description = "AWS region for deployment"
     type        = string
@@ -159,13 +159,13 @@
                 #!/bin/bash
 
                 sudo apt-get update -y
-                sudo apt-get install -y postgresql postgresql-contrib
+                sudo apt-get install -y postgresql-15 postgresql-contrib-15
 
                 sudo -u postgres psql -c "CREATE USER inventario_user WITH PASSWORD 'isis2503';"
                 sudo -u postgres createdb -O inventario_user inventario_db
-                echo "host all all 0.0.0.0/0 trust" | sudo tee -a /etc/postgresql/16/main/pg_hba.conf
-                echo "listen_addresses='*'" | sudo tee -a /etc/postgresql/16/main/postgresql.conf
-                echo "max_connections=2000" | sudo tee -a /etc/postgresql/16/main/postgresql.conf
+                echo "host all all 0.0.0.0/0 trust" | sudo tee -a /etc/postgresql/15/main/pg_hba.conf
+                echo "listen_addresses='*'" | sudo tee -a /etc/postgresql/15/main/postgresql.conf
+                echo "max_connections=2000" | sudo tee -a /etc/postgresql/15/main/postgresql.conf
                 sudo service postgresql restart
                 EOT
 
@@ -260,3 +260,4 @@ user_data = <<-EOT
     description = "Private IP address for the PostgreSQL database instance"
     value       = aws_instance.database.private_ip
 }
+
