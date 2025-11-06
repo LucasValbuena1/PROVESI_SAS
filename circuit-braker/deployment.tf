@@ -217,8 +217,8 @@ user_data = <<-EOT
               source venv/bin/activate
 
               # ==== Instalar dependencias manualmente (sin requirements.txt) ====
-              pip install --upgrade pip
-              pip install django djangorestframework psycopg2-binary gunicorn
+              pip install --upgrade --break-system-packages pip
+              pip install --break-system-packages django djangorestframework psycopg2-binary gunicorn
 
               # ==== Migraciones ====
               python manage.py makemigrations
