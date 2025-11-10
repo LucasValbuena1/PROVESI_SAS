@@ -2,12 +2,17 @@ from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.views.decorators.cache import never_cache
 from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
 from .models import Order
+import re
 
 def order_lookup(request):
     q = request.GET.get("q", "").strip()
     order, not_found = None, False
     if q:
+        if not re.match(r"^[A-Za-z0-9\-]+$", q):
+            return Response({"error":"Orden invalida"},status = status.HTTP_400_BAD_REQUEST)
         order = Order.objects.only("order_number", "status", "updated_at")\
                               .filter(order_number__iexact=q).first()
         if not order:
