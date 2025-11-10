@@ -1,0 +1,11 @@
+<h1>Pantalla de inicio</h1>
+
+<!-- Botón que lleva a la otra app -->
+<form action="{% url 'dashboard' %}">
+    <button type="submit">Ir al Dashboard</button>
+</form>
+
+<!-- O como un enlace con estilo de botón -->
+<a href="{% url 'dashboard' %}">
+    <button>Ir al Dashboard</button>
+</a>
