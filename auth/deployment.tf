@@ -1,32 +1,25 @@
-############################################################
-# ISIS2503 - Auth & Monitoring Stack (single-file version) #
-############################################################
+# ---------- Variables ----------
+variable "region"         { type = string, default = "us-east-1" }
+variable "project_prefix" { type = string, default = "authd" }
+variable "instance_type"  { type = string, default = "t2.nano" }
 
-variable "region" {
-  description = "AWS region for deployment"
+# Clave pública para SSH (opcional pero recomendado para entrar a las EC2)
+variable "ssh_public_key" {
   type        = string
-  default     = "us-east-1"
+  description = "Your SSH public key content (ssh-rsa ...)"
+  default     = ""
 }
 
-variable "project_prefix" {
-  description = "Prefix used for naming AWS resources"
-  type        = string
-  default     = "authd"
-}
-
-variable "instance_type" {
-  description = "EC2 instance type for application hosts"
-  type        = string
-  default     = "t2.nano"
-}
-
+# ---------- Provider ----------
 provider "aws" {
   region = var.region
 }
 
+# ---------- Locals ----------
 locals {
   project_name = "${var.project_prefix}-authentication"
-  repository   = "https://github.com/ISIS2503/ISIS2503-MonitoringApp-Auth0.git"
+  repo_url     = "https://github.com/LucasValbuena1/PROVESI_SAS.git"
+  repo_branch  = "seguridad"
 
   common_tags = {
     Project   = local.project_name
@@ -34,188 +27,152 @@ locals {
   }
 }
 
-# --- Default VPC (simple y sin complicarse)
-data "aws_vpc" "default" {
-  default = true
-}
-
-# AMI Ubuntu 24.04 LTS oficial de Canonical
+# ---------- AMI Ubuntu 24.04 ----------
 data "aws_ami" "ubuntu" {
   most_recent = true
   owners      = ["099720109477"]
-
-  filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
+  filter { name = "name", values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"] }
+  filter { name = "virtualization-type", values = ["hvm"] }
 }
 
-# --- Security Groups ---
+# ---------- SSH key (opcional) ----------
+resource "aws_key_pair" "this" {
+  count      = length(var.ssh_public_key) > 0 ? 1 : 0
+  key_name   = "${var.project_prefix}-key"
+  public_key = var.ssh_public_key
+}
+
+# ---------- Security Groups ----------
 resource "aws_security_group" "traffic_django" {
   name        = "${var.project_prefix}-traffic-django"
-  description = "Allow application traffic on port 8080"
-  vpc_id      = data.aws_vpc.default.id
-
-  ingress {
-    description = "HTTP access for service layer"
-    from_port   = 8080
-    to_port     = 8080
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    description = "Allow all outbound traffic"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
+  description = "Allow app on 8080"
+  ingress { from_port = 8080, to_port = 8080, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] }
   tags = merge(local.common_tags, { Name = "${var.project_prefix}-traffic-django" })
 }
 
 resource "aws_security_group" "traffic_db" {
   name        = "${var.project_prefix}-traffic-db"
-  description = "Allow PostgreSQL access (5432)"
-  vpc_id      = data.aws_vpc.default.id
-
-  ingress {
-    description = "PostgreSQL from anywhere (simplificado para el lab)"
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    description = "Allow all outbound traffic"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
+  description = "Allow PostgreSQL 5432"
+  ingress { from_port = 5432, to_port = 5432, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] }
   tags = merge(local.common_tags, { Name = "${var.project_prefix}-traffic-db" })
 }
 
 resource "aws_security_group" "traffic_ssh" {
   name        = "${var.project_prefix}-traffic-ssh"
-  description = "Allow SSH access (22)"
-  vpc_id      = data.aws_vpc.default.id
-
-  ingress {
-    description = "SSH access from anywhere (simplificado para el lab)"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    description = "Allow all outbound traffic"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
+  description = "Allow SSH 22"
+  ingress { from_port = 22, to_port = 22, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] }
+  egress  { from_port = 0, to_port = 0, protocol = "-1", cidr_blocks = ["0.0.0.0/0"] }
   tags = merge(local.common_tags, { Name = "${var.project_prefix}-traffic-ssh" })
 }
 
-# --- EC2: PostgreSQL ---
+# ---------- DB EC2 (PostgreSQL) ----------
 resource "aws_instance" "database" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
   associate_public_ip_address = true
   vpc_security_group_ids      = [aws_security_group.traffic_db.id, aws_security_group.traffic_ssh.id]
+  key_name                    = length(var.ssh_public_key) > 0 ? aws_key_pair.this[0].key_name : null
 
   user_data = <<-EOT
-              #!/bin/bash
-              set -euxo pipefail
+    #!/bin/bash
+    set -e
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql postgresql-contrib
 
-              apt-get update -y
-              DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql postgresql-contrib
+    sudo -u postgres psql -c "CREATE USER monitoring_user WITH PASSWORD 'isis2503';"
+    sudo -u postgres createdb -O monitoring_user monitoring_db
 
-              sudo -u postgres psql -c "CREATE USER monitoring_user WITH PASSWORD 'isis2503';"
-              sudo -u postgres createdb -O monitoring_user monitoring_db
+    echo "listen_addresses='*'" | tee -a /etc/postgresql/16/main/postgresql.conf
+    echo "max_connections=2000"   | tee -a /etc/postgresql/16/main/postgresql.conf
+    echo "host all all 0.0.0.0/0 trust" | tee -a /etc/postgresql/16/main/pg_hba.conf
+    systemctl restart postgresql
+  EOT
 
-              # Ajustes para permitir conexiones remotas
-              echo "host all all 0.0.0.0/0 trust" >> /etc/postgresql/16/main/pg_hba.conf
-              echo "listen_addresses='*'" >> /etc/postgresql/16/main/postgresql.conf
-              echo "max_connections=2000" >> /etc/postgresql/16/main/postgresql.conf
-
-              systemctl restart postgresql
-              EOT
-
-  tags = merge(local.common_tags, {
-    Name = "${var.project_prefix}-db"
-    Role = "database"
-  })
+  tags = merge(local.common_tags, { Name = "${var.project_prefix}-db", Role = "database" })
 }
 
-# --- EC2: Monitoring (Django) ---
-resource "aws_instance" "monitoring" {
+# ---------- APP EC2 (UI del repo PROVESI_SAS/seguridad) ----------
+resource "aws_instance" "app" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
   associate_public_ip_address = true
   vpc_security_group_ids      = [aws_security_group.traffic_django.id, aws_security_group.traffic_ssh.id]
+  key_name                    = length(var.ssh_public_key) > 0 ? aws_key_pair.this[0].key_name : null
 
   user_data = <<-EOT
-              #!/bin/bash
-              set -euxo pipefail
+    #!/bin/bash
+    set -e
 
-              export DATABASE_HOST=${aws_instance.database.private_ip}
-              echo "DATABASE_HOST=${aws_instance.database.private_ip}" >> /etc/environment
+    # Export DB host para apps que lo necesiten
+    echo "DATABASE_HOST=${aws_instance.database.private_ip}" | tee -a /etc/environment
+    export DATABASE_HOST=${aws_instance.database.private_ip}
 
-              apt-get update -y
-              DEBIAN_FRONTEND=noninteractive apt-get install -y python3-pip python3-venv git build-essential libpq-dev python3-dev
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y python3-pip python3-venv git nginx
 
-              mkdir -p /labs
-              cd /labs
+    # Clonar tu repo branch 'seguridad'
+    mkdir -p /srv/app
+    cd /srv/app
+    if [ ! -d PROVESI_SAS ]; then
+      git clone -b ${local.repo_branch} ${local.repo_url}
+    fi
+    cd PROVESI_SAS
 
-              if [ ! -d ISIS2503-MonitoringApp-Auth0 ]; then
-                git clone ${local.repository}
-              fi
+    # Si existe requirements.txt, instalar deps en venv
+    if [ -f requirements.txt ]; then
+      python3 -m venv .venv
+      . .venv/bin/activate
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    fi
 
-              cd ISIS2503-MonitoringApp-Auth0
+    # Detectar Flask (app.py con Flask)
+    if grep -q "Flask(" app.py 2>/dev/null; then
+      # Servicio gunicorn en :8080
+      cat >/etc/systemd/system/provesi.service <<'UNIT'
+[Unit]
+Description=Gunicorn PROVESI_SAS
+After=network.target
 
-              pip3 install --upgrade pip --break-system-packages
-              pip3 install -r requirements.txt --break-system-packages
+[Service]
+User=root
+WorkingDirectory=/srv/app/PROVESI_SAS
+Environment="DATABASE_HOST=${aws_instance.database.private_ip}"
+ExecStart=/srv/app/PROVESI_SAS/.venv/bin/gunicorn -b 0.0.0.0:8080 app:app
+Restart=always
 
-              # Migraciones
-              DATABASE_HOST=${aws_instance.database.private_ip} python3 manage.py makemigrations
-              DATABASE_HOST=${aws_instance.database.private_ip} python3 manage.py migrate
+[Install]
+WantedBy=multi-user.target
+UNIT
+      systemctl daemon-reload
+      systemctl enable provesi
+      systemctl start provesi
 
-              # Correr el servidor de desarrollo en :8080
-              nohup bash -c 'DATABASE_HOST=${aws_instance.database.private_ip} python3 manage.py runserver 0.0.0.0:8080' >/var/log/monitoring_app.log 2>&1 &
-              EOT
+    else
+      # Servir estáticos del repo con NGINX en :8080
+      cat >/etc/nginx/sites-available/provesi <<'NGX'
+server {
+    listen 8080 default_server;
+    server_name _;
+    root /srv/app/PROVESI_SAS;
+    index index.html;
 
-  tags = merge(local.common_tags, {
-    Name = "${var.project_prefix}-django"
-    Role = "monitoring-app"
-  })
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}
+NGX
+      ln -sf /etc/nginx/sites-available/provesi /etc/nginx/sites-enabled/provesi
+      rm -f /etc/nginx/sites-enabled/default
+      systemctl restart nginx
+    fi
+  EOT
 
+  tags = merge(local.common_tags, { Name = "${var.project_prefix}-app", Role = "ui-app" })
   depends_on = [aws_instance.database]
 }
 
-# --- Outputs ---
-output "monitoring_public_ip" {
-  description = "Public IP address for the monitoring service application"
-  value       = aws_instance.monitoring.public_ip
-}
-
-output "monitoring_private_ip" {
-  description = "Private IP address for the monitoring service application"
-  value       = aws_instance.monitoring.private_ip
-}
-
-output "database_private_ip" {
-  description = "Private IP address for the PostgreSQL database instance"
-  value       = aws_instance.database.private_ip
-}
+# ---------- Outputs ----------
+output "app_public_ip"       { value = aws_instance.app.public_ip,       description = "APP public IP (browse http://IP:8080)" }
+output "db_private_ip"       { value = aws_instance.database.private_ip, description = "DB private IP" }
+output "app_private_ip"      { value = aws_instance.app.private_ip,      description = "APP private IP" }
