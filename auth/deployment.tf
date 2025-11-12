@@ -1,63 +1,130 @@
 ############################################################
-# PROVESI_SAS - Auth & Monitoring Stack (parametrizado)   #
+# ISIS2503 - Auth & Monitoring Stack (single-file version) #
 ############################################################
 
-variable "region"         { type = string  default = "us-east-1" }
-variable "project_prefix" { type = string  default = "authd" }
-variable "instance_type"  { type = string  default = "t2.nano" }
+variable "region" {
+  description = "AWS region for deployment"
+  type        = string
+  default     = "us-east-1"
+}
 
-# === REPO Y APP (AJUSTA SI TU CÓDIGO ESTÁ EN OTRA RUTA) ===
-variable "repository_url" { type = string  default = "https://github.com/LucasValbuena1/PROVESI_SAS.git" }
-variable "repository_branch" { type = string default = "Deployments" }     # ej: main, Deployments, etc.
-variable "app_subdir"        { type = string default = "" }                # ej: "apps/monitoring" si la app no está en raíz
-variable "app_start_cmd"     { type = string default = "python3 manage.py runserver 0.0.0.0:8080" }
+variable "project_prefix" {
+  description = "Prefix used for naming AWS resources"
+  type        = string
+  default     = "authd"
+}
 
-# === DB (CREDENCIALES DE LAB) ===
-variable "db_name"     { type = string default = "monitoring_db" }
-variable "db_user"     { type = string default = "monitoring_user" }
-variable "db_password" { type = string default = "isis2503" }
+variable "instance_type" {
+  description = "EC2 instance type for application hosts"
+  type        = string
+  default     = "t2.nano"
+}
 
-provider "aws" { region = var.region }
+provider "aws" {
+  region = var.region
+}
 
 locals {
   project_name = "${var.project_prefix}-authentication"
-  common_tags = { Project = local.project_name, ManagedBy = "Terraform" }
+  repository   = "https://github.com/ISIS2503/ISIS2503-MonitoringApp-Auth0.git"
+
+  common_tags = {
+    Project   = local.project_name
+    ManagedBy = "Terraform"
+  }
 }
 
-data "aws_vpc" "default" { default = true }
+# --- Default VPC (simple y sin complicarse)
+data "aws_vpc" "default" {
+  default = true
+}
 
+# AMI Ubuntu 24.04 LTS oficial de Canonical
 data "aws_ami" "ubuntu" {
   most_recent = true
   owners      = ["099720109477"]
-  filter { name = "name"  values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"] }
-  filter { name = "virtualization-type" values = ["hvm"] }
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
 }
 
 # --- Security Groups ---
 resource "aws_security_group" "traffic_django" {
   name        = "${var.project_prefix}-traffic-django"
-  description = "Allow app traffic 8080"
+  description = "Allow application traffic on port 8080"
   vpc_id      = data.aws_vpc.default.id
-  ingress { from_port = 8080 to_port = 8080 protocol = "tcp" cidr_blocks = ["0.0.0.0/0"] }
-  egress  { from_port = 0 to_port = 0 protocol = "-1" cidr_blocks = ["0.0.0.0/0"] }
+
+  ingress {
+    description = "HTTP access for service layer"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    description = "Allow all outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   tags = merge(local.common_tags, { Name = "${var.project_prefix}-traffic-django" })
 }
 
 resource "aws_security_group" "traffic_db" {
   name        = "${var.project_prefix}-traffic-db"
-  description = "Allow PostgreSQL 5432"
+  description = "Allow PostgreSQL access (5432)"
   vpc_id      = data.aws_vpc.default.id
-  ingress { from_port = 5432 to_port = 5432 protocol = "tcp" cidr_blocks = ["0.0.0.0/0"] }
-  egress  { from_port = 0 to_port = 0 protocol = "-1" cidr_blocks = ["0.0.0.0/0"] }
+
+  ingress {
+    description = "PostgreSQL from anywhere (simplificado para el lab)"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    description = "Allow all outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   tags = merge(local.common_tags, { Name = "${var.project_prefix}-traffic-db" })
 }
 
 resource "aws_security_group" "traffic_ssh" {
   name        = "${var.project_prefix}-traffic-ssh"
-  description = "Allow SSH 22"
+  description = "Allow SSH access (22)"
   vpc_id      = data.aws_vpc.default.id
-  ingress { from_port = 22 to_port = 22 protocol = "tcp" cidr_blocks = ["0.0.0.0/0"] }
-  egress  { from_port = 0 to_port = 0 protocol = "-1" cidr_blocks = ["0.0.0.0/0"] }
+
+  ingress {
+    description = "SSH access from anywhere (simplificado para el lab)"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    description = "Allow all outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   tags = merge(local.common_tags, { Name = "${var.project_prefix}-traffic-ssh" })
 }
 
@@ -69,85 +136,86 @@ resource "aws_instance" "database" {
   vpc_security_group_ids      = [aws_security_group.traffic_db.id, aws_security_group.traffic_ssh.id]
 
   user_data = <<-EOT
-    #!/bin/bash
-    set -euxo pipefail
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update -y
-    apt-get install -y postgresql postgresql-contrib
+              #!/bin/bash
+              set -euxo pipefail
 
-    sudo -u postgres psql -c "CREATE USER ${var.db_user} WITH PASSWORD '${var.db_password}';"
-    sudo -u postgres createdb -O ${var.db_user} ${var.db_name}
+              apt-get update -y
+              DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql postgresql-contrib
 
-    echo "host all all 0.0.0.0/0 trust" >> /etc/postgresql/16/main/pg_hba.conf
-    echo "listen_addresses='*'"         >> /etc/postgresql/16/main/postgresql.conf
-    echo "max_connections=2000"         >> /etc/postgresql/16/main/postgresql.conf
-    systemctl restart postgresql
-  EOT
+              sudo -u postgres psql -c "CREATE USER monitoring_user WITH PASSWORD 'isis2503';"
+              sudo -u postgres createdb -O monitoring_user monitoring_db
 
-  tags = merge(local.common_tags, { Name = "${var.project_prefix}-db", Role = "database" })
+              # Ajustes para permitir conexiones remotas
+              echo "host all all 0.0.0.0/0 trust" >> /etc/postgresql/16/main/pg_hba.conf
+              echo "listen_addresses='*'" >> /etc/postgresql/16/main/postgresql.conf
+              echo "max_connections=2000" >> /etc/postgresql/16/main/postgresql.conf
+
+              systemctl restart postgresql
+              EOT
+
+  tags = merge(local.common_tags, {
+    Name = "${var.project_prefix}-db"
+    Role = "database"
+  })
 }
 
-# --- EC2: App (Django u otra) desde TU repo ---
-resource "aws_instance" "app" {
+# --- EC2: Monitoring (Django) ---
+resource "aws_instance" "monitoring" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
   associate_public_ip_address = true
   vpc_security_group_ids      = [aws_security_group.traffic_django.id, aws_security_group.traffic_ssh.id]
 
   user_data = <<-EOT
-    #!/bin/bash
-    set -euxo pipefail
-    export DEBIAN_FRONTEND=noninteractive
+              #!/bin/bash
+              set -euxo pipefail
 
-    # Vars derivadas
-    DB_HOST="${aws_instance.database.private_ip}"
-    REPO_URL="${var.repository_url}"
-    REPO_BRANCH="${var.repository_branch}"
-    APP_SUBDIR="${var.app_subdir}"
+              export DATABASE_HOST=${aws_instance.database.private_ip}
+              echo "DATABASE_HOST=${aws_instance.database.private_ip}" >> /etc/environment
 
-    # Dependencias base
-    apt-get update -y
-    apt-get install -y python3-pip python3-venv git build-essential libpq-dev python3-dev
+              apt-get update -y
+              DEBIAN_FRONTEND=noninteractive apt-get install -y python3-pip python3-venv git build-essential libpq-dev python3-dev
 
-    # Workspace
-    mkdir -p /labs && cd /labs
-    if [ ! -d repo ]; then
-      git clone -b "$REPO_BRANCH" "$REPO_URL" repo
-    fi
+              mkdir -p /labs
+              cd /labs
 
-    cd repo
-    if [ -n "$APP_SUBDIR" ]; then
-      cd "$APP_SUBDIR"
-    fi
+              if [ ! -d ISIS2503-MonitoringApp-Auth0 ]; then
+                git clone ${local.repository}
+              fi
 
-    # Python deps
-    pip3 install --upgrade pip --break-system-packages || true
-    if [ -f requirements.txt ]; then
-      pip3 install -r requirements.txt --break-system-packages || true
-    fi
+              cd ISIS2503-MonitoringApp-Auth0
 
-    # Export DB envs coherentes con tu app (ajústalos si tu app usa otros nombres)
-    echo "DATABASE_HOST=$DB_HOST" >> /etc/environment
-    echo "DATABASE_NAME=${var.db_name}" >> /etc/environment
-    echo "DATABASE_USER=${var.db_user}" >> /etc/environment
-    echo "DATABASE_PASSWORD=${var.db_password}" >> /etc/environment
+              pip3 install --upgrade pip --break-system-packages
+              pip3 install -r requirements.txt --break-system-packages
 
-    # Migraciones si es Django (ignora errores si no es Django)
-    ( DATABASE_HOST=$DB_HOST DATABASE_NAME=${var.db_name} DATABASE_USER=${var.db_user} DATABASE_PASSWORD='${var.db_password}' \
-      python3 manage.py makemigrations || true )
-    ( DATABASE_HOST=$DB_HOST DATABASE_NAME=${var.db_name} DATABASE_USER=${var.db_user} DATABASE_PASSWORD='${var.db_password}' \
-      python3 manage.py migrate || true )
+              # Migraciones
+              DATABASE_HOST=${aws_instance.database.private_ip} python3 manage.py makemigrations
+              DATABASE_HOST=${aws_instance.database.private_ip} python3 manage.py migrate
 
-    # Arranque (parametrizado)
-    nohup bash -c '${var.app_start_cmd}' > /var/log/app.log 2>&1 &
-  EOT
+              # Correr el servidor de desarrollo en :8080
+              nohup bash -c 'DATABASE_HOST=${aws_instance.database.private_ip} python3 manage.py runserver 0.0.0.0:8080' >/var/log/monitoring_app.log 2>&1 &
+              EOT
+
+  tags = merge(local.common_tags, {
+    Name = "${var.project_prefix}-django"
+    Role = "monitoring-app"
+  })
 
   depends_on = [aws_instance.database]
-
-  tags = merge(local.common_tags, { Name = "${var.project_prefix}-app", Role = "application" })
 }
 
 # --- Outputs ---
-output "app_public_ip"     { value = aws_instance.app.public_ip     description = "Public IP of the app host" }
-output "app_private_ip"    { value = aws_instance.app.private_ip    description = "Private IP of the app host" }
-output "database_private_ip" { value = aws_instance.database.private_ip description = "Private IP of DB" }
+output "monitoring_public_ip" {
+  description = "Public IP address for the monitoring service application"
+  value       = aws_instance.monitoring.public_ip
+}
+
+output "monitoring_private_ip" {
+  description = "Private IP address for the monitoring service application"
+  value       = aws_instance.monitoring.private_ip
+}
+
+output "database_private_ip" {
+  description = "Private IP address for the PostgreSQL database instance"
+  value       = aws_instance.database.private_ip
+}
