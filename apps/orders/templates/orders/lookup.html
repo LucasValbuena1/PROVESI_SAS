@@ -1,43 +1,320 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Provesi WMS — Consulta de pedido</title>
-  <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto; margin:2rem}
-    .card{border:1px solid #ddd; border-radius:8px; padding:1rem; max-width:560px}
-    input[type=text]{width:100%; padding:.6rem; font-size:1rem}
-    button{padding:.6rem 1rem; font-size:1rem; cursor:pointer}
-    .status{font-weight:600}
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consulta de Pedido - PROVESI SAS</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding-top: 3rem;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 2rem;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .back-link {
+            display: inline-block;
+            color: white;
+            text-decoration: none;
+            margin-bottom: 1rem;
+            opacity: 0.9;
+            transition: opacity 0.3s;
+        }
+
+        .back-link:hover {
+            opacity: 1;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .search-form {
+            margin-bottom: 2rem;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #333;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            font-size: 1rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            padding: 0.75rem 1.5rem;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-1px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .divider {
+            border: none;
+            border-top: 1px solid #e0e0e0;
+            margin: 1.5rem 0;
+        }
+
+        .result {
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #666;
+        }
+
+        .info-value {
+            color: #333;
+            text-align: right;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .status-received {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .status-picking {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+
+        .status-packing {
+            background: #fce4ec;
+            color: #c2185b;
+        }
+
+        .status-shipped {
+            background: #f3e5f5;
+            color: #7b1fa2;
+        }
+
+        .status-delivered {
+            background: #e8f5e9;
+            color: #388e3c;
+        }
+
+        .status-cancelled {
+            background: #ffebee;
+            color: #d32f2f;
+        }
+
+        .not-found {
+            padding: 1rem;
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            border-radius: 4px;
+            color: #856404;
+        }
+
+        .api-link {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #e0e0e0;
+            text-align: center;
+        }
+
+        .api-link a {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: color 0.3s;
+        }
+
+        .api-link a:hover {
+            color: #5568d3;
+            text-decoration: underline;
+        }
+
+        .timestamp {
+            font-size: 0.85rem;
+            color: #999;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding-top: 1.5rem;
+            }
+
+            .header h1 {
+                font-size: 1.5rem;
+            }
+
+            .card {
+                padding: 1.5rem;
+            }
+
+            .input-group {
+                flex-direction: column;
+            }
+
+            button {
+                width: 100%;
+            }
+
+            .info-row {
+                flex-direction: column;
+                gap: 0.25rem;
+            }
+
+            .info-value {
+                text-align: left;
+            }
+        }
+    </style>
 </head>
 <body>
-  <h1>Consulta de pedido</h1>
-  <div class="card">
-    <form method="get" action="{% url 'order-lookup' %}">
-      <label for="q">Código del pedido:</label>
-      <input id="q" name="q" type="text" value="{{ query|default:'' }}" placeholder="Ej: PV-000001" autofocus>
-      <button type="submit">Buscar</button>
-    </form>
+    <div class="container">
+        <a href="{% url 'home' %}" class="back-link">← Volver al inicio</a>
+        
+        <div class="header">
+            <h1>Consulta de Pedido</h1>
+        </div>
 
-    {% if order %}
-      <hr>
-      <p><strong>Código:</strong> {{ order.order_number }}</p>
-      <p><strong>Estado:</strong>
-        <span class="status">{{ order.get_status_display }}</span> <small>({{ order.status }})</small>
-      </p>
-      <p><small>Actualizado:</small> {{ order.updated_at|date:"Y-m-d H:i:s" }}</p>
-    {% elif not_found %}
-      <hr>
-      <p>No se encontró el pedido “{{ query }}”.</p>
-    {% endif %}
-  </div>
+        <div class="card">
+            <form method="get" action="{% url 'order-lookup' %}" class="search-form">
+                <label for="q">Código del pedido</label>
+                <div class="input-group">
+                    <input 
+                        id="q" 
+                        name="q" 
+                        type="text" 
+                        value="{{ query|default:'' }}" 
+                        placeholder="Ej: PV-000001" 
+                        autofocus
+                        required
+                    >
+                    <button type="submit">Buscar</button>
+                </div>
+            </form>
 
-  {% if query %}
-    <p style="margin-top:2rem">
-      <a href="{% url 'order-status' query %}">Ver JSON de este pedido</a>
-    </p>
-  {% endif %}
+            {% if order %}
+                <hr class="divider">
+                <div class="result">
+                    <div class="info-row">
+                        <span class="info-label">Código</span>
+                        <span class="info-value">{{ order.order_number }}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Estado</span>
+                        <span class="info-value">
+                            <span class="status-badge status-{{ order.status }}">
+                                {{ order.get_status_display }}
+                            </span>
+                        </span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Última actualización</span>
+                        <span class="info-value timestamp">
+                            {{ order.updated_at|date:"d/m/Y H:i" }}
+                        </span>
+                    </div>
+                </div>
+
+                {% if query %}
+                    <div class="api-link">
+                        <a href="{% url 'order-status' query %}" target="_blank">
+                            Ver respuesta API (JSON) →
+                        </a>
+                    </div>
+                {% endif %}
+            {% elif not_found %}
+                <hr class="divider">
+                <div class="not-found">
+                    <strong>No encontrado:</strong> No se encontró el pedido "{{ query }}".
+                </div>
+            {% endif %}
+        </div>
+    </div>
 </body>
 </html>
