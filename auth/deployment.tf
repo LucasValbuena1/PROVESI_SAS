@@ -30,10 +30,8 @@ provider "aws" {
 }
 
 locals {
-  project_name = "${var.project_prefix}-authentication"
-
-  # Repo con TU interfaz (branch seguridad)
-  repository_url   = "https://github.com/LucasValbuena1/PROVESI_SAS.git"
+  project_name      = "${var.project_prefix}-authentication"
+  repository_url    = "https://github.com/LucasValbuena1/PROVESI_SAS.git"
   repository_branch = "seguridad"
 
   common_tags = {
@@ -56,7 +54,7 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-# SGs
+# SG para app (8080) con egress permitido
 resource "aws_security_group" "traffic_django" {
   name        = "${var.project_prefix}-traffic-django"
   description = "Allow application traffic on port 8080"
@@ -69,10 +67,17 @@ resource "aws_security_group" "traffic_django" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Egress por defecto: all outbound permitido
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   tags = merge(local.common_tags, { Name = "${var.project_prefix}-traffic-django" })
 }
 
+# SG para DB (5432)
 resource "aws_security_group" "traffic_db" {
   name        = "${var.project_prefix}-traffic-db"
   description = "Allow PostgreSQL access"
@@ -85,9 +90,17 @@ resource "aws_security_group" "traffic_db" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   tags = merge(local.common_tags, { Name = "${var.project_prefix}-traffic-db" })
 }
 
+# SG para SSH (22)
 resource "aws_security_group" "traffic_ssh" {
   name        = "${var.project_prefix}-traffic-ssh"
   description = "Allow SSH access"
@@ -101,7 +114,6 @@ resource "aws_security_group" "traffic_ssh" {
   }
 
   egress {
-    description = "Allow all outbound traffic"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -111,7 +123,7 @@ resource "aws_security_group" "traffic_ssh" {
   tags = merge(local.common_tags, { Name = "${var.project_prefix}-traffic-ssh" })
 }
 
-# Instancia DB (igual que antes)
+# Instancia DB (PostgreSQL)
 resource "aws_instance" "database" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
@@ -122,8 +134,9 @@ resource "aws_instance" "database" {
               #!/bin/bash
               set -euxo pipefail
 
+              export DEBIAN_FRONTEND=noninteractive
               apt-get update -y
-              DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql postgresql-contrib
+              apt-get install -y postgresql postgresql-contrib
 
               sudo -u postgres psql -c "CREATE USER monitoring_user WITH PASSWORD 'isis2503';"
               sudo -u postgres createdb -O monitoring_user monitoring_db
@@ -140,7 +153,7 @@ resource "aws_instance" "database" {
   })
 }
 
-# Instancia APP que despliega TU interfaz del branch `seguridad`
+# Instancia APP que despliega tu interfaz del branch `seguridad`
 resource "aws_instance" "monitoring" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
@@ -155,33 +168,26 @@ resource "aws_instance" "monitoring" {
 
               # Variable hacia DB (por si tu app la usa)
               echo "DATABASE_HOST=${aws_instance.database.private_ip}" | tee -a /etc/environment
-              export DATABASE_HOST=${aws_instance.database.private_ip}
 
               apt-get update -y
               apt-get install -y python3-pip python3-venv git build-essential libpq-dev python3-dev
-              # Nginx sólo si luego quieres servir estatico con reverse proxy; no es requerido para gunicorn/uvicorn
-              # apt-get install -y nginx
 
               # Workspace
               APP_DIR="/opt/app"
-              REPO_DIR="${APP_DIR}/PROVESI_SAS"
-              mkdir -p "${APP_DIR}"
-              cd "${APP_DIR}"
+              REPO_DIR="$${APP_DIR}/PROVESI_SAS"
+              mkdir -p "$${APP_DIR}"
+              cd "$${APP_DIR}"
 
-              if [ ! -d "${REPO_DIR}" ]; then
-                git clone --branch #{BRANCH} --single-branch #{URL} "${REPO_DIR}"
+              if [ ! -d "$${REPO_DIR}" ]; then
+                git clone --branch ${local.repository_branch} --single-branch ${local.repository_url} "$${REPO_DIR}"
               else
-                cd "${REPO_DIR}"
-                git fetch origin #{BRANCH}
-                git checkout #{BRANCH}
-                git pull --ff-only origin #{BRANCH}
+                cd "$${REPO_DIR}"
+                git fetch origin ${local.repository_branch}
+                git checkout ${local.repository_branch}
+                git pull --ff-only origin ${local.repository_branch}
               fi
 
-              # Reemplaza placeholders
-              sed -i 's|#{BRANCH}|${local.repository_branch}|g' /var/tmp/userdata-placeholder || true
-              sed -i 's|#{URL}|${local.repository_url}|g' /var/tmp/userdata-placeholder || true
-
-              cd "${REPO_DIR}"
+              cd "$${REPO_DIR}"
 
               # Crear venv
               python3 -m venv .venv
@@ -193,66 +199,64 @@ resource "aws_instance" "monitoring" {
                 pip install -r requirements.txt
               else
                 for f in app/requirements.txt src/requirements.txt web/requirements.txt backend/requirements.txt ; do
-                  if [ -f "$f" ]; then pip install -r "$f"; break; fi
+                  if [ -f "$${f}" ]; then pip install -r "$${f}"; break; fi
                 done
               fi
 
-              # Detectar tipo de app y crear servicio systemd
+              # Detectar tipo de app y comando
               SERVICE_NAME="juluapp.service"
-              WORKDIR="${REPO_DIR}"
+              WORKDIR="$${REPO_DIR}"
               CMD=""
 
               # 1) Django (manage.py)
               if [ -f "manage.py" ]; then
-                CMD="/opt/app/PROVESI_SAS/.venv/bin/python3 manage.py migrate && /opt/app/PROVESI_SAS/.venv/bin/python3 manage.py runserver 0.0.0.0:8080"
+                # Migraciones si aplica; luego runserver (dev)
+                CMD="$${REPO_DIR}/.venv/bin/python3 manage.py migrate && $${REPO_DIR}/.venv/bin/python3 manage.py runserver 0.0.0.0:8080"
               else
-                # 2) Flask: app.py con "app" como WSGI
-                if [ -f "app.py" ]; then
-                  # Probar si es Flask
-                  if grep -qi "flask" app.py; then
-                    pip install gunicorn
-                    CMD="/opt/app/PROVESI_SAS/.venv/bin/gunicorn app:app --bind 0.0.0.0:8080 --workers 2"
-                  fi
+                # 2) Flask
+                if [ -f "app.py" ] && grep -qi "flask" app.py; then
+                  pip install gunicorn
+                  CMD="$${REPO_DIR}/.venv/bin/gunicorn app:app --bind 0.0.0.0:8080 --workers 2"
                 fi
 
-                # 3) FastAPI/Uvicorn: main.py o app/main.py
-                if [ -z "$CMD" ]; then
+                # 3) FastAPI/Uvicorn
+                if [ -z "$${CMD}" ]; then
                   if [ -f "main.py" ] && grep -qi "fastapi" main.py; then
                     pip install uvicorn fastapi
-                    CMD="/opt/app/PROVESI_SAS/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8080"
+                    CMD="$${REPO_DIR}/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8080"
                   elif [ -f "app/main.py" ] && grep -qi "fastapi" app/main.py; then
                     pip install uvicorn fastapi
-                    WORKDIR="${REPO_DIR}/app"
-                    CMD="/opt/app/PROVESI_SAS/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8080"
+                    WORKDIR="$${REPO_DIR}/app"
+                    CMD="$${REPO_DIR}/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8080"
                   fi
                 fi
               fi
 
               # 4) Estático (si no hay app Python detectable): buscar un index.html
-              if [ -z "$CMD" ]; then
-                TARGET_STATIC="${REPO_DIR}"
+              if [ -z "$${CMD}" ]; then
+                TARGET_STATIC="$${REPO_DIR}"
                 for d in . web frontend site public ; do
-                  if [ -f "${REPO_DIR}/${d}/index.html" ]; then
-                    TARGET_STATIC="${REPO_DIR}/${d}"
+                  if [ -f "$${REPO_DIR}/$${d}/index.html" ]; then
+                    TARGET_STATIC="$${REPO_DIR}/$${d}"
                     break
                   fi
                 done
-                WORKDIR="$TARGET_STATIC"
+                WORKDIR="$${TARGET_STATIC}"
                 CMD="/usr/bin/python3 -m http.server 8080"
               fi
 
               # Crear servicio systemd
-              cat >/etc/systemd/system/${SERVICE_NAME} <<SERVICE
+              cat >/etc/systemd/system/$${SERVICE_NAME} <<SERVICE
               [Unit]
               Description=JULU App service
               After=network.target
 
               [Service]
               Type=simple
-              WorkingDirectory=${WORKDIR}
+              WorkingDirectory=$${WORKDIR}
               Environment=PYTHONUNBUFFERED=1
               EnvironmentFile=-/etc/environment
-              ExecStart=/bin/bash -lc '. ${REPO_DIR}/.venv/bin/activate && ${CMD}'
+              ExecStart=/bin/bash -lc '. $${REPO_DIR}/.venv/bin/activate && $${CMD}'
               Restart=always
               RestartSec=3
 
@@ -261,8 +265,8 @@ resource "aws_instance" "monitoring" {
               SERVICE
 
               systemctl daemon-reload
-              systemctl enable ${SERVICE_NAME}
-              systemctl start ${SERVICE_NAME}
+              systemctl enable $${SERVICE_NAME}
+              systemctl start $${SERVICE_NAME}
               EOT
 
   tags = merge(local.common_tags, {
