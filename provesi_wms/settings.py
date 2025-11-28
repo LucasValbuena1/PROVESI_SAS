@@ -38,7 +38,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    'social_django',
     'apps.orders',
     'apps.home',
 ]
@@ -131,24 +130,3 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-# Auth0 Configuration
-LOGIN_URL = "/login/auth0"
-LOGIN_REDIRECT_URL = "/"
-LOGOUT_REDIRECT_URL = "https://dev-hl7ygioqwl6rfguz.us.auth0.com/v2/logout?returnTo=http%3A%2F%2Flocalhost%3A8000"
-
-SOCIAL_AUTH_TRAILING_SLASH = True
-SOCIAL_AUTH_AUTH0_DOMAIN = 'dev-hl7ygioqwl6rfguz.us.auth0.com'
-SOCIAL_AUTH_AUTH0_KEY = 'oZoDV6xdLMs3zjNi8979av5seSrWjQ7w'
-SOCIAL_AUTH_AUTH0_SECRET = 'QWwnYNycSzVMXntuwcSQZuHHvFpa43px1ZLEqemJkwB8slRxUXC_pKdt1gwb6vIx'
-SOCIAL_AUTH_AUTH0_SCOPE = [
-    'openid',
-    'profile',
-    'email',
-    'role',
-]
-
-AUTHENTICATION_BACKENDS = {
-    'provesi_wms.auth0backend.Auth0',
-    'django.contrib.auth.backends.ModelBackend',
-}

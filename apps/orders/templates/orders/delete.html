@@ -1,0 +1,43 @@
+{% extends "orders/base.html" %}
+
+{% block title %}Eliminar Orden - PROVESI SAS{% endblock %}
+{% block header_title %}Eliminar Orden{% endblock %}
+
+{% block back_link %}
+<a href="{% url 'order-list' %}" class="back-link">← Volver a la lista</a>
+{% endblock %}
+
+{% block content %}
+<div style="text-align: center; padding: 1rem 0;">
+    <div style="font-size: 4rem; margin-bottom: 1rem;">⚠️</div>
+    
+    <h2 style="color: #d32f2f; margin-bottom: 1rem;">¿Eliminar esta orden?</h2>
+    
+    <div style="background: #f9f9f9; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; text-align: left;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+            <span style="color: #666; font-weight: 600;">Código:</span>
+            <span><strong>{{ order.order_number }}</strong></span>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+            <span style="color: #666; font-weight: 600;">Estado:</span>
+            <span class="status-badge status-{{ order.status }}">{{ order.get_status_display }}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+            <span style="color: #666; font-weight: 600;">Última actualización:</span>
+            <span class="timestamp">{{ order.updated_at|date:"d/m/Y H:i" }}</span>
+        </div>
+    </div>
+    
+    <p style="color: #666; margin-bottom: 1.5rem;">
+        Esta acción no se puede deshacer.
+    </p>
+    
+    <form method="post" action="{% url 'order-delete' order.order_number %}" style="display: inline;">
+        {% csrf_token %}
+        <div class="btn-group" style="justify-content: center;">
+            <button type="submit" class="btn btn-danger">Sí, Eliminar</button>
+            <a href="{% url 'order-list' %}" class="btn btn-secondary">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "orders/base.html" %}
+
+{% block title %}Crear Orden - PROVESI SAS{% endblock %}
+{% block header_title %}Crear Nueva Orden{% endblock %}
+
+{% block back_link %}
+<a href="{% url 'order-list' %}" class="back-link">← Volver a la lista</a>
+{% endblock %}
+
+{% block content %}
+<form method="post" action="{% url 'order-create' %}">
+    {% csrf_token %}
+    
+    <div style="margin-bottom: 1rem;">
+        <label for="order_number">Código del Pedido</label>
+        <input 
+            type="text" 
+            id="order_number" 
+            name="order_number" 
+            placeholder="Ej: PV-000001"
+            required
+            autofocus
+        >
+    </div>
+    
+    <div style="margin-bottom: 1rem;">
+        <label for="status">Estado</label>
+        <select id="status" name="status">
+            {% for value, label in statuses %}
+                <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    
+    <div class="btn-group">
+        <button type="submit" class="btn btn-success">Crear Orden</button>
+        <a href="{% url 'order-list' %}" class="btn btn-secondary">Cancelar</a>
+    </div>
+</form>
+{% endblock %}
