@@ -12,7 +12,7 @@
     {% csrf_token %}
     
     <div style="margin-bottom: 1rem;">
-        <label for="order_number">Código del Pedido</label>
+        <label for="order_number">Código del Pedido *</label>
         <input 
             type="text" 
             id="order_number" 
@@ -21,6 +21,19 @@
             required
             autofocus
         >
+    </div>
+    
+    <div style="margin-bottom: 1rem;">
+        <label for="client">Cliente</label>
+        <select id="client" name="client">
+            <option value="">-- Sin cliente asignado --</option>
+            {% for c in clients %}
+                <option value="{{ c.id }}">{{ c.name }} ({{ c.email }})</option>
+            {% endfor %}
+        </select>
+        <p style="font-size: 0.85rem; color: #666; margin-top: 0.25rem;">
+            ¿No existe el cliente? <a href="{% url 'client-create' %}" style="color: #667eea;">Crear nuevo cliente</a>
+        </p>
     </div>
     
     <div style="margin-bottom: 1rem;">

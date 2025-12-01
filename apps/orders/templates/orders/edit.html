@@ -7,12 +7,49 @@
 <a href="{% url 'order-list' %}" class="back-link">← Volver a la lista</a>
 {% endblock %}
 
+{% block extra_styles %}
+<style>
+    #return-reason-container {
+        display: none;
+        margin-bottom: 1rem;
+        padding: 1rem;
+        background-color: #fff3cd;
+        border: 1px solid #ffc107;
+        border-radius: 8px;
+    }
+    
+    #return-reason-container.visible {
+        display: block;
+    }
+    
+    #return-reason-container label {
+        color: #856404;
+        font-weight: 600;
+    }
+    
+    #return-reason-container textarea {
+        border-color: #ffc107;
+    }
+    
+    #return-reason-container textarea:focus {
+        border-color: #d39e00;
+        box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.2);
+    }
+    
+    .status-warning {
+        font-size: 0.85rem;
+        color: #856404;
+        margin-top: 0.5rem;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <form method="post" action="{% url 'order-edit' order.order_number %}">
     {% csrf_token %}
     
     <div style="margin-bottom: 1rem;">
-        <label for="order_number">Código del Pedido</label>
+        <label for="order_number">Código del Pedido *</label>
         <input 
             type="text" 
             id="order_number" 
@@ -23,16 +60,45 @@
     </div>
     
     <div style="margin-bottom: 1rem;">
+        <label for="client">Cliente</label>
+        <select id="client" name="client">
+            <option value="">-- Sin cliente asignado --</option>
+            {% for c in clients %}
+                <option value="{{ c.id }}" {% if order.client_id == c.id %}selected{% endif %}>
+                    {{ c.name }} ({{ c.email }})
+                </option>
+            {% endfor %}
+        </select>
+    </div>
+    
+    <div style="margin-bottom: 1rem;">
         <label for="status">Estado</label>
-        <select id="status" name="status">
+        <select id="status" name="status" onchange="toggleReturnReason()">
             {% for value, label in statuses %}
                 <option value="{{ value }}" {% if order.status == value %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
         </select>
     </div>
     
+    <!-- Contenedor para razón de devolución -->
+    <div id="return-reason-container" class="{% if order.status == 'returned' %}visible{% endif %}">
+        <label for="return_reason">Razón de Devolución *</label>
+        <textarea 
+            id="return_reason" 
+            name="return_reason" 
+            rows="4"
+            placeholder="Ingrese la razón por la cual se devuelve esta orden..."
+        >{{ order.return_reason|default:'' }}</textarea>
+        <p class="status-warning">
+            ⚠️ Es obligatorio indicar la razón de la devolución.
+        </p>
+    </div>
+    
     <p class="timestamp" style="margin-bottom: 1rem;">
         Última actualización: {{ order.updated_at|date:"d/m/Y H:i" }}
+        {% if order.returned_at %}
+        <br>Fecha de devolución: {{ order.returned_at|date:"d/m/Y H:i" }}
+        {% endif %}
     </p>
     
     <div class="btn-group">
@@ -40,4 +106,23 @@
         <a href="{% url 'order-list' %}" class="btn btn-secondary">Cancelar</a>
     </div>
 </form>
+
+<script>
+function toggleReturnReason() {
+    const statusSelect = document.getElementById('status');
+    const returnContainer = document.getElementById('return-reason-container');
+    const returnTextarea = document.getElementById('return_reason');
+    
+    if (statusSelect.value === 'returned') {
+        returnContainer.classList.add('visible');
+        returnTextarea.required = true;
+    } else {
+        returnContainer.classList.remove('visible');
+        returnTextarea.required = false;
+    }
+}
+
+// Ejecutar al cargar la página
+document.addEventListener('DOMContentLoaded', toggleReturnReason);
+</script>
 {% endblock %}

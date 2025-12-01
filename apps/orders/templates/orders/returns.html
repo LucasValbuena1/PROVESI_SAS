@@ -1,0 +1,219 @@
+{% extends "orders/base.html" %}
+
+{% block title %}Devoluciones - PROVESI SAS{% endblock %}
+{% block header_title %}Órdenes Devueltas{% endblock %}
+
+{% block back_link %}
+<a href="{% url 'order-list' %}" class="back-link">← Volver a órdenes</a>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .return-card {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        margin-bottom: 1rem;
+        overflow: hidden;
+    }
+    
+    .return-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 1.5rem;
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
+        color: white;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    
+    .return-header h3 {
+        margin: 0;
+        font-size: 1.1rem;
+    }
+    
+    .return-header .date {
+        font-size: 0.85rem;
+        opacity: 0.9;
+    }
+    
+    .return-body {
+        padding: 1.5rem;
+    }
+    
+    .return-info {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid #eee;
+    }
+    
+    .return-info-item {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .return-info-item .label {
+        font-size: 0.75rem;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 0.25rem;
+    }
+    
+    .return-info-item .value {
+        font-size: 1rem;
+        color: #333;
+        font-weight: 500;
+    }
+    
+    .return-reason {
+        background-color: #fff8e6;
+        border-left: 4px solid #ffc107;
+        padding: 1rem;
+        border-radius: 0 8px 8px 0;
+    }
+    
+    .return-reason-title {
+        font-size: 0.85rem;
+        color: #856404;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .return-reason-text {
+        color: #333;
+        line-height: 1.6;
+        margin: 0;
+    }
+    
+    .return-actions {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid #eee;
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .empty-returns {
+        text-align: center;
+        padding: 3rem 1rem;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .empty-returns-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+    }
+    
+    .summary-bar {
+        background: white;
+        border-radius: 12px;
+        padding: 1rem 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    
+    .summary-stat {
+        text-align: center;
+    }
+    
+    .summary-stat .number {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #ee5a5a;
+    }
+    
+    .summary-stat .label {
+        font-size: 0.85rem;
+        color: #666;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Resumen -->
+<div class="summary-bar">
+    <div class="summary-stat">
+        <div class="number">{{ orders|length }}</div>
+        <div class="label">Total Devoluciones</div>
+    </div>
+    <a href="{% url 'order-list' %}" class="btn btn-secondary">Ver todas las órdenes</a>
+</div>
+
+{% if orders %}
+    {% for order in orders %}
+    <div class="return-card">
+        <div class="return-header">
+            <h3>📦 {{ order.order_number }}</h3>
+            <span class="date">
+                {% if order.returned_at %}
+                    Devuelto el {{ order.returned_at|date:"d/m/Y" }} a las {{ order.returned_at|date:"H:i" }}
+                {% else %}
+                    {{ order.updated_at|date:"d/m/Y H:i" }}
+                {% endif %}
+            </span>
+        </div>
+        <div class="return-body">
+            <div class="return-info">
+                <div class="return-info-item">
+                    <span class="label">Cliente</span>
+                    <span class="value">
+                        {% if order.client %}
+                            <a href="{% url 'client-detail' order.client_id %}" style="color: #667eea; text-decoration: none;">
+                                {{ order.client.name }}
+                            </a>
+                        {% else %}
+                            <span style="color: #999;">Sin asignar</span>
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="return-info-item">
+                    <span class="label">Fecha de creación</span>
+                    <span class="value">{{ order.created_at|date:"d/m/Y H:i" }}</span>
+                </div>
+                <div class="return-info-item">
+                    <span class="label">Estado actual</span>
+                    <span class="value">
+                        <span class="status-badge status-returned">{{ order.get_status_display }}</span>
+                    </span>
+                </div>
+            </div>
+            
+            <div class="return-reason">
+                <div class="return-reason-title">
+                    ⚠️ Razón de la devolución
+                </div>
+                <p class="return-reason-text">
+                    {{ order.return_reason|default:"No se especificó una razón." }}
+                </p>
+            </div>
+            
+            <div class="return-actions">
+                <a href="{% url 'order-edit' order.order_number %}" class="btn btn-primary">Editar orden</a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="empty-returns">
+        <div class="empty-returns-icon">✅</div>
+        <h3>No hay devoluciones</h3>
+        <p style="color: #666;">Todas las órdenes están en buen estado.</p>
+        <a href="{% url 'order-list' %}" class="btn btn-primary" style="margin-top: 1rem;">Ver órdenes</a>
+    </div>
+{% endif %}
+{% endblock %}

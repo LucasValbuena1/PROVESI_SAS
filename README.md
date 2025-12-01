@@ -1,39 +1,69 @@
-# Provesi WMS (MVP de consulta de pedidos)
+# PROVESI WMS
 
-MVP de WMS para consultar el estado de un pedido en tiempo real (objetivo: respuesta ≤ 1 s bajo condiciones óptimas).
+Sistema de gestión de órdenes y clientes con arquitectura de microservicios.
 
 ## Requisitos
-- Python 3.12 (recomendado 3.12.11)
-- PostgreSQL 16.x
-- (Opcional) Java 17 y JMeter 5.6.3 para pruebas de rendimiento
 
-## Setup (macOS / Linux)
+- Python 3.10+
+- PostgreSQL 14+
+
+## Instalación
+
+### 1. Clonar e instalar dependencias
+
 ```bash
-# 1) Clonar
-git clone https://github.com/tu-org/provesi-wms.git
-cd provesi-wms
+git clone <url-del-repositorio>
+cd PROVESI_SAS
 
-# 2) Entorno
-python3.12 -m venv .venv
+python -m venv .venv
+
+# Windows
+.venv\Scripts\activate
+
+# Mac/Linux
 source .venv/bin/activate
-pip install -U pip wheel
+
 pip install -r requirements.txt
+```
 
-# 3) Base de datos local
-# Crea rol y DB (ajusta contraseña si quieres)
-createuser -P provesi          # te pedirá una contraseña (utiliza '1234' que ya está puesta en settings.py)
-createdb -O provesi provesi_wms
+### 2. Crear bases de datos
 
-# 4) Migraciones
-python manage.py makemigrations
-python manage.py migrate
+```bash
+# Mac/Linux
+psql postgres -c "CREATE USER provesi WITH PASSWORD '1234';"
+psql postgres -c "CREATE DATABASE provesi_wms OWNER provesi;"
+psql postgres -c "CREATE DATABASE provesi_clients OWNER provesi;"
+psql postgres -c "CREATE DATABASE provesi_orders OWNER provesi;"
 
-# 5) Datos de ejemplo
-python manage.py shell << 'PY'
-from apps.orders.models import Order, OrderStatus
-Order.objects.get_or_create(order_number="PV-000001", defaults={"status": OrderStatus.PICKING})
-print("Pedido de prueba creado.")
-PY
+# Windows (desde CMD como administrador)
+psql -U postgres -c "CREATE USER provesi WITH PASSWORD '1234';"
+psql -U postgres -c "CREATE DATABASE provesi_wms OWNER provesi;"
+psql -U postgres -c "CREATE DATABASE provesi_clients OWNER provesi;"
+psql -U postgres -c "CREATE DATABASE provesi_orders OWNER provesi;"
+```
 
-# 6) Ejecutar
+### 3. Aplicar migraciones
+
+```bash
+python manage.py migrate --database=default
+python manage.py migrate --database=clients_db
+python manage.py migrate --database=orders_db
+```
+
+### 4. Ejecutar
+
+```bash
 python manage.py runserver
+```
+
+Abrir http://127.0.0.1:8000
+
+## URLs principales
+
+| URL | Descripción |
+|-----|-------------|
+| `/` | Inicio |
+| `/orders/` | Gestión de órdenes |
+| `/orders/returns/` | Devoluciones |
+| `/clients/` | Gestión de clientes |
+| `/orders/health` | Estado del sistema |

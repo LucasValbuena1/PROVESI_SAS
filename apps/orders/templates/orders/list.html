@@ -6,7 +6,11 @@
 {% block content %}
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
     <p style="color: #666; margin: 0;">Total: <strong>{{ orders|length }}</strong> órdenes</p>
-    <div style="display: flex; gap: 0.5rem;">
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <a href="{% url 'client-list' %}" class="btn btn-secondary">👥 Clientes</a>
+        <a href="{% url 'returns-list' %}" class="btn btn-warning" style="background-color: #ffc107; color: #212529;">
+            🔄 Devoluciones {% if returns_count > 0 %}({{ returns_count }}){% endif %}
+        </a>
         <a href="{% url 'order-lookup' %}" class="btn btn-secondary">🔍 Buscar</a>
         <a href="{% url 'order-create' %}" class="btn btn-success">+ Nueva Orden</a>
     </div>
@@ -17,6 +21,7 @@
         <thead>
             <tr>
                 <th>Código</th>
+                <th>Cliente</th>
                 <th>Estado</th>
                 <th>Última Actualización</th>
                 <th>Acciones</th>
@@ -27,6 +32,15 @@
             <tr>
                 <td data-label="Código">
                     <strong>{{ order.order_number }}</strong>
+                </td>
+                <td data-label="Cliente">
+                    {% if order.client %}
+                        <a href="{% url 'client-detail' order.client_id %}" style="color: #667eea; text-decoration: none;">
+                            {{ order.client.name }}
+                        </a>
+                    {% else %}
+                        <span style="color: #999;">Sin asignar</span>
+                    {% endif %}
                 </td>
                 <td data-label="Estado">
                     <span class="status-badge status-{{ order.status }}">

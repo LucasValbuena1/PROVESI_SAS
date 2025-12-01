@@ -1,0 +1,65 @@
+{% extends "clients/base.html" %}
+
+{% block title %}Editar Cliente - PROVESI SAS{% endblock %}
+{% block header_title %}Editar Cliente{% endblock %}
+
+{% block back_link %}
+<a href="{% url 'client-list' %}" class="back-link">← Volver a clientes</a>
+{% endblock %}
+
+{% block content %}
+<form method="post" action="{% url 'client-edit' client.id %}">
+    {% csrf_token %}
+    
+    <div style="margin-bottom: 1rem;">
+        <label for="name">Nombre *</label>
+        <input 
+            type="text" 
+            id="name" 
+            name="name" 
+            value="{{ client.name }}"
+            required
+        >
+    </div>
+    
+    <div style="margin-bottom: 1rem;">
+        <label for="email">Email *</label>
+        <input 
+            type="email" 
+            id="email" 
+            name="email" 
+            value="{{ client.email }}"
+            required
+        >
+    </div>
+    
+    <div style="margin-bottom: 1rem;">
+        <label for="phone">Teléfono</label>
+        <input 
+            type="text" 
+            id="phone" 
+            name="phone" 
+            value="{{ client.phone }}"
+        >
+    </div>
+    
+    <div style="margin-bottom: 1rem;">
+        <label for="address">Dirección</label>
+        <textarea 
+            id="address" 
+            name="address" 
+            rows="3"
+        >{{ client.address }}</textarea>
+    </div>
+    
+    <p class="timestamp" style="margin-bottom: 1rem;">
+        Cliente desde: {{ client.created_at|date:"d/m/Y" }} · 
+        Última actualización: {{ client.updated_at|date:"d/m/Y H:i" }}
+    </p>
+    
+    <div class="btn-group">
+        <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+        <a href="{% url 'client-list' %}" class="btn btn-secondary">Cancelar</a>
+    </div>
+</form>
+{% endblock %}
