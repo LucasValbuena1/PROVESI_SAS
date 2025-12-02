@@ -7,7 +7,7 @@ class OrderStatus(models.TextChoices):
     PACKING = "packing", "Empaque"
     SHIPPED = "shipped", "Despachado"
     DELIVERED = "delivered", "Entregado"
-    RETURNED = "returned", "Devuelto"  # Nuevo estado
+    RETURNED = "returned", "Devuelto"
     CANCELLED = "cancelled", "Cancelado"
 
 
@@ -15,14 +15,13 @@ class Order(models.Model):
     """
     Modelo de Orden.
     
-    Nota: client_id es un IntegerField en lugar de ForeignKey porque
-    Client está en una base de datos diferente (clients_db).
+    Nota: client_id es un CharField para almacenar el ObjectId de MongoDB.
     La relación se maneja a nivel de aplicación, no de base de datos.
     """
     order_number = models.CharField(max_length=32, unique=True, db_index=True)
     
-    # Almacenamos el ID del cliente, no una FK directa
-    client_id = models.IntegerField(null=True, blank=True, db_index=True)
+    # Almacenamos el ID del cliente como string (ObjectId de MongoDB)
+    client_id = models.CharField(max_length=24, null=True, blank=True, db_index=True)
     
     status = models.CharField(
         max_length=20, 
@@ -54,7 +53,7 @@ class Order(models.Model):
 
     def get_client(self):
         """
-        Obtiene el cliente desde la base de datos de clientes.
+        Obtiene el cliente desde MongoDB.
         """
         if not self.client_id:
             return None
@@ -62,15 +61,13 @@ class Order(models.Model):
         from apps.clients.models import Client
         
         try:
-            return Client.objects.using('clients_db').get(id=self.client_id)
-        except Client.DoesNotExist:
+            return Client.objects(id=self.client_id).first()
+        except:
             return None
 
     @property
     def client(self):
-        """
-        Propiedad para acceder al cliente de forma conveniente.
-        """
+        """Propiedad para acceder al cliente de forma conveniente."""
         if not hasattr(self, '_client_cache'):
             self._client_cache = self.get_client()
         return self._client_cache

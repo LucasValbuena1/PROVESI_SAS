@@ -64,7 +64,7 @@
         <select id="client" name="client">
             <option value="">-- Sin cliente asignado --</option>
             {% for c in clients %}
-                <option value="{{ c.id }}" {% if order.client_id == c.id %}selected{% endif %}>
+                <option value="{{ c.id }}" {% if order.client_id == c.id|stringformat:"s" %}selected{% endif %}>
                     {{ c.name }} ({{ c.email }})
                 </option>
             {% endfor %}
@@ -122,7 +122,6 @@ function toggleReturnReason() {
     }
 }
 
-// Ejecutar al cargar la página
 document.addEventListener('DOMContentLoaded', toggleReturnReason);
 </script>
 {% endblock %}

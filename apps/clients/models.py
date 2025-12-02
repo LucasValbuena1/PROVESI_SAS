@@ -1,44 +1,41 @@
-from django.db import models
+"""
+Modelo de Cliente usando MongoDB (MongoEngine).
+"""
+
+from mongoengine import Document, StringField, EmailField, DateTimeField
+from datetime import datetime
 
 
-class Client(models.Model):
-    """
-    Modelo de Cliente.
+class Client(Document):
+    """Modelo de Cliente almacenado en MongoDB."""
     
-    Este modelo vive en la base de datos clients_db.
-    """
-    name = models.CharField(max_length=100)
-    email = models.EmailField(unique=True)
-    phone = models.CharField(max_length=20, blank=True)
-    address = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = 'clients_client'
-        ordering = ['name']
-
+    name = StringField(required=True, max_length=100)
+    email = EmailField(required=True, unique=True)
+    phone = StringField(max_length=20, default="")
+    address = StringField(default="")
+    created_at = DateTimeField(default=datetime.utcnow)
+    updated_at = DateTimeField(default=datetime.utcnow)
+    
+    meta = {
+        'collection': 'clients',
+        'ordering': ['name'],
+        'indexes': ['email', 'name']
+    }
+    
+    def save(self, *args, **kwargs):
+        self.updated_at = datetime.utcnow()
+        return super().save(*args, **kwargs)
+    
+    def to_dict(self):
+        return {
+            'id': str(self.id),
+            'name': self.name,
+            'email': self.email,
+            'phone': self.phone,
+            'address': self.address,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+    
     def __str__(self):
         return self.name
-
-    def get_orders(self):
-        """
-        Obtiene las órdenes de este cliente desde la base de datos de órdenes.
-        """
-        # Importación tardía para evitar dependencias circulares
-        from apps.orders.models import Order
-        
-        return Order.objects.using('orders_db').filter(client_id=self.id)
-
-    @property
-    def orders(self):
-        """
-        Propiedad para acceder a las órdenes de forma conveniente.
-        """
-        return self.get_orders()
-
-    def orders_count(self):
-        """
-        Retorna el número de órdenes del cliente.
-        """
-        return self.get_orders().count()

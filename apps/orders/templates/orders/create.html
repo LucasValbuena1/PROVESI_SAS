@@ -1,7 +1,7 @@
 {% extends "orders/base.html" %}
 
-{% block title %}Crear Orden - PROVESI SAS{% endblock %}
-{% block header_title %}Crear Nueva Orden{% endblock %}
+{% block title %}Nueva Orden - PROVESI SAS{% endblock %}
+{% block header_title %}Nueva Orden{% endblock %}
 
 {% block back_link %}
 <a href="{% url 'order-list' %}" class="back-link">← Volver a la lista</a>
@@ -17,9 +17,8 @@
             type="text" 
             id="order_number" 
             name="order_number" 
-            placeholder="Ej: PV-000001"
+            placeholder="Ej: ORD-001"
             required
-            autofocus
         >
     </div>
     
@@ -31,16 +30,13 @@
                 <option value="{{ c.id }}">{{ c.name }} ({{ c.email }})</option>
             {% endfor %}
         </select>
-        <p style="font-size: 0.85rem; color: #666; margin-top: 0.25rem;">
-            ¿No existe el cliente? <a href="{% url 'client-create' %}" style="color: #667eea;">Crear nuevo cliente</a>
-        </p>
     </div>
     
     <div style="margin-bottom: 1rem;">
         <label for="status">Estado</label>
         <select id="status" name="status">
             {% for value, label in statuses %}
-                <option value="{{ value }}">{{ label }}</option>
+                <option value="{{ value }}" {% if value == "received" %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
         </select>
     </div>

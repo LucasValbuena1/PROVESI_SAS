@@ -1,180 +1,95 @@
 """
-Servicio de comunicación segura entre microservicios.
+Servicios de seguridad para comunicación entre microservicios.
 
-Este módulo proporciona funciones de alto nivel para que los microservicios
-se comuniquen de forma segura, cifrando los datos sensibles.
+Provee acceso seguro a datos entre:
+- Orders (PostgreSQL) <-> Clients (MongoDB)
 """
 
-import json
 import logging
-from typing import Optional, List, Dict, Any
-from django.conf import settings
-from .crypto_service import crypto_service
+from typing import Dict, List, Any, Optional
 
 logger = logging.getLogger(__name__)
 
 
-class SecureDataService:
-    """
-    Servicio para cifrar/descifrar datos sensibles en la comunicación
-    entre microservicios.
-    """
-    
-    # Campos sensibles que siempre deben cifrarse
-    SENSITIVE_FIELDS = {
-        'client': ['email', 'phone', 'address', 'name'],
-        'order': ['client_id']
-    }
-    
-    def __init__(self):
-        self.crypto = crypto_service
-    
-    def encrypt_sensitive_fields(self, data: dict, entity_type: str) -> dict:
-        """
-        Cifra los campos sensibles de un diccionario.
-        
-        Args:
-            data: Diccionario con los datos
-            entity_type: Tipo de entidad ('client', 'order')
-            
-        Returns:
-            Diccionario con campos sensibles cifrados
-        """
-        if entity_type not in self.SENSITIVE_FIELDS:
-            return data
-        
-        encrypted_data = data.copy()
-        sensitive = self.SENSITIVE_FIELDS[entity_type]
-        
-        for field in sensitive:
-            if field in encrypted_data and encrypted_data[field] is not None:
-                # Convertir a string si no lo es
-                value = str(encrypted_data[field])
-                encrypted_data[field] = self.crypto.encrypt_aes(value)
-                encrypted_data[f'{field}_encrypted'] = True
-        
-        return encrypted_data
-    
-    def decrypt_sensitive_fields(self, data: dict, entity_type: str) -> dict:
-        """
-        Descifra los campos sensibles de un diccionario.
-        
-        Args:
-            data: Diccionario con datos cifrados
-            entity_type: Tipo de entidad ('client', 'order')
-            
-        Returns:
-            Diccionario con campos descifrados
-        """
-        if entity_type not in self.SENSITIVE_FIELDS:
-            return data
-        
-        decrypted_data = data.copy()
-        sensitive = self.SENSITIVE_FIELDS[entity_type]
-        
-        for field in sensitive:
-            if data.get(f'{field}_encrypted') and field in data:
-                try:
-                    decrypted_data[field] = self.crypto.decrypt_aes(data[field])
-                    del decrypted_data[f'{field}_encrypted']
-                except Exception as e:
-                    logger.error(f"Error descifrando campo {field}: {str(e)}")
-                    decrypted_data[field] = None
-        
-        return decrypted_data
-
-
 class SecureClientService:
     """
-    Servicio para acceder a datos de clientes de forma segura
-    desde el microservicio de órdenes.
+    Servicio para acceso seguro a datos de clientes desde otros microservicios.
+    Clientes están en MongoDB.
     """
     
-    def __init__(self):
-        self.data_service = SecureDataService()
-    
-    def get_client_secure(self, client_id: int) -> Optional[Dict[str, Any]]:
+    def get_client_secure(self, client_id: str) -> Optional[Dict[str, Any]]:
         """
-        Obtiene un cliente de forma segura desde la base de datos de clientes.
+        Obtiene un cliente de forma segura.
         
         Args:
-            client_id: ID del cliente
+            client_id: ID del cliente (string ObjectId de MongoDB)
             
         Returns:
-            Diccionario con datos del cliente o None
+            Diccionario con datos del cliente o None si no existe
         """
         from apps.clients.models import Client
+        from bson import ObjectId
         
         try:
-            client = Client.objects.using('clients_db').get(id=client_id)
-            
-            # Crear diccionario con datos
-            client_data = {
-                'id': client.id,
-                'name': client.name,
-                'email': client.email,
-                'phone': client.phone,
-                'address': client.address,
-            }
-            
-            logger.info(f"[SECURITY] Cliente {client_id} obtenido de forma segura")
-            return client_data
-            
-        except Client.DoesNotExist:
-            logger.warning(f"[SECURITY] Cliente {client_id} no encontrado")
+            # Validar ObjectId
+            ObjectId(client_id)
+        except:
+            logger.warning(f"[SECURITY] ID de cliente inválido: {client_id}")
+            return None
+        
+        try:
+            client = Client.objects(id=client_id).first()
+            if client:
+                logger.info(f"[SECURITY] Cliente {client_id} obtenido de forma segura")
+                return client.to_dict()
             return None
         except Exception as e:
             logger.error(f"[SECURITY] Error obteniendo cliente {client_id}: {str(e)}")
             return None
     
-    def get_client_encrypted(self, client_id: int) -> Optional[Dict[str, Any]]:
-        """
-        Obtiene un cliente con sus datos sensibles cifrados.
+    def get_client_encrypted(self, client_id: str) -> Optional[str]:
+        """Obtiene un cliente y retorna sus datos cifrados."""
+        from .crypto_service import crypto_service
         
-        Args:
-            client_id: ID del cliente
-            
-        Returns:
-            Diccionario con datos sensibles cifrados
-        """
         client_data = self.get_client_secure(client_id)
-        
         if client_data:
-            return self.data_service.encrypt_sensitive_fields(client_data, 'client')
-        
+            import json
+            return crypto_service.encrypt_aes(json.dumps(client_data))
         return None
     
-    def get_clients_for_orders(self, client_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+    def get_clients_for_orders(self, client_ids: List[str]) -> Dict[str, Dict[str, Any]]:
         """
-        Obtiene múltiples clientes de forma optimizada y segura.
+        Obtiene múltiples clientes para enriquecer órdenes.
         
         Args:
-            client_ids: Lista de IDs de clientes
+            client_ids: Lista de IDs de clientes (strings)
             
         Returns:
             Diccionario {client_id: client_data}
         """
         from apps.clients.models import Client
+        from bson import ObjectId
         
         if not client_ids:
             return {}
         
+        # Filtrar IDs válidos
+        valid_ids = []
+        for cid in client_ids:
+            try:
+                ObjectId(cid)
+                valid_ids.append(cid)
+            except:
+                pass
+        
+        if not valid_ids:
+            return {}
+        
         try:
-            clients = Client.objects.using('clients_db').filter(id__in=client_ids)
-            
-            result = {}
-            for client in clients:
-                result[client.id] = {
-                    'id': client.id,
-                    'name': client.name,
-                    'email': client.email,
-                    'phone': client.phone,
-                    'address': client.address,
-                }
-            
-            logger.info(f"[SECURITY] {len(result)} clientes obtenidos de forma segura")
+            clients = Client.objects(id__in=valid_ids)
+            result = {str(c.id): c.to_dict() for c in clients}
+            logger.info(f"[SECURITY] {len(result)} clientes obtenidos para órdenes")
             return result
-            
         except Exception as e:
             logger.error(f"[SECURITY] Error obteniendo clientes: {str(e)}")
             return {}
@@ -182,19 +97,16 @@ class SecureClientService:
 
 class SecureOrderService:
     """
-    Servicio para acceder a datos de órdenes de forma segura
-    desde el microservicio de clientes.
+    Servicio para acceso seguro a datos de órdenes desde otros microservicios.
+    Órdenes están en PostgreSQL.
     """
     
-    def __init__(self):
-        self.data_service = SecureDataService()
-    
-    def get_orders_for_client(self, client_id: int) -> List[Dict[str, Any]]:
+    def get_orders_for_client(self, client_id: str) -> List[Dict[str, Any]]:
         """
         Obtiene las órdenes de un cliente de forma segura.
         
         Args:
-            client_id: ID del cliente
+            client_id: ID del cliente (string para compatibilidad con MongoDB)
             
         Returns:
             Lista de diccionarios con datos de órdenes
@@ -203,7 +115,6 @@ class SecureOrderService:
         
         try:
             orders = Order.objects.using('orders_db').filter(client_id=client_id)
-            
             result = []
             for order in orders:
                 result.append({
@@ -211,26 +122,24 @@ class SecureOrderService:
                     'order_number': order.order_number,
                     'status': order.status,
                     'status_display': order.get_status_display(),
-                    'client_id': order.client_id,
-                    'updated_at': order.updated_at.isoformat(),
+                    'created_at': order.created_at.isoformat() if order.created_at else None,
+                    'updated_at': order.updated_at.isoformat() if order.updated_at else None,
                 })
-            
             logger.info(f"[SECURITY] {len(result)} órdenes obtenidas para cliente {client_id}")
             return result
-            
         except Exception as e:
             logger.error(f"[SECURITY] Error obteniendo órdenes para cliente {client_id}: {str(e)}")
             return []
     
-    def get_orders_count_for_clients(self, client_ids: List[int]) -> Dict[int, int]:
+    def get_orders_count_for_clients(self, client_ids: List[str]) -> Dict[str, int]:
         """
         Obtiene el conteo de órdenes para múltiples clientes.
         
         Args:
-            client_ids: Lista de IDs de clientes
+            client_ids: Lista de IDs de clientes (strings)
             
         Returns:
-            Diccionario {client_id: orders_count}
+            Diccionario {client_id: count}
         """
         from apps.orders.models import Order
         from django.db.models import Count
@@ -245,18 +154,55 @@ class SecureOrderService:
                 .values('client_id')
                 .annotate(count=Count('id'))
             )
-            
-            result = {item['client_id']: item['count'] for item in counts}
-            
+            result = {str(item['client_id']): item['count'] for item in counts}
             logger.info(f"[SECURITY] Conteo de órdenes obtenido para {len(client_ids)} clientes")
             return result
-            
         except Exception as e:
-            logger.error(f"[SECURITY] Error obteniendo conteo de órdenes: {str(e)}")
+            logger.error(f"[SECURITY] Error contando órdenes: {str(e)}")
             return {}
 
 
-# Instancias globales de los servicios
-secure_data_service = SecureDataService()
+class SecureDataService:
+    """Servicio para cifrar/descifrar datos sensibles."""
+    
+    SENSITIVE_FIELDS = {
+        'client': ['email', 'phone', 'address', 'name'],
+        'order': ['client_id']
+    }
+    
+    def encrypt_sensitive_fields(self, data: Dict[str, Any], entity_type: str) -> Dict[str, Any]:
+        """Cifra campos sensibles de una entidad."""
+        from .crypto_service import crypto_service
+        
+        if entity_type not in self.SENSITIVE_FIELDS:
+            return data
+        
+        result = data.copy()
+        for field in self.SENSITIVE_FIELDS[entity_type]:
+            if field in result and result[field]:
+                result[field] = crypto_service.encrypt_aes(str(result[field]))
+        
+        return result
+    
+    def decrypt_sensitive_fields(self, data: Dict[str, Any], entity_type: str) -> Dict[str, Any]:
+        """Descifra campos sensibles de una entidad."""
+        from .crypto_service import crypto_service
+        
+        if entity_type not in self.SENSITIVE_FIELDS:
+            return data
+        
+        result = data.copy()
+        for field in self.SENSITIVE_FIELDS[entity_type]:
+            if field in result and result[field]:
+                try:
+                    result[field] = crypto_service.decrypt_aes(result[field])
+                except:
+                    pass  # Si falla, mantener el valor original
+        
+        return result
+
+
+# Instancias globales
 secure_client_service = SecureClientService()
 secure_order_service = SecureOrderService()
+secure_data_service = SecureDataService()

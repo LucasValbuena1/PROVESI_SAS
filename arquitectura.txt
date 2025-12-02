@@ -1,0 +1,353 @@
+================================================================================
+                    PROVESI WMS - DOCUMENTACIÓN TÉCNICA
+================================================================================
+
+1. RESUMEN GENERAL
+================================================================================
+
+PROVESI WMS es un sistema de gestión de órdenes y clientes construido con 
+arquitectura de microservicios. Combina dos frameworks (Django y FastAPI) y 
+dos bases de datos (PostgreSQL y MongoDB).
+
+Puerto único: 8000
+- Rutas /api/* → FastAPI (APIs REST)
+- Rutas /* → Django (Vistas HTML)
+
+
+2. ESTRUCTURA DE CARPETAS
+================================================================================
+
+PROVESI_SAS/
+├── apps/
+│   ├── clients/          # Microservicio de Clientes (MongoDB)
+│   │   ├── models.py     # Modelo MongoEngine (Document)
+│   │   ├── views.py      # Vistas Django para HTML
+│   │   ├── api.py        # Endpoints FastAPI
+│   │   ├── schemas.py    # Schemas Pydantic para validación
+│   │   ├── urls.py       # URLs de Django
+│   │   └── templates/    # HTML templates
+│   │
+│   ├── orders/           # Microservicio de Órdenes (PostgreSQL)
+│   │   ├── models.py     # Modelo Django ORM
+│   │   ├── views.py      # Vistas Django para HTML
+│   │   ├── api.py        # Endpoints FastAPI
+│   │   ├── schemas.py    # Schemas Pydantic para validación
+│   │   ├── urls.py       # URLs de Django
+│   │   └── templates/    # HTML templates
+│   │
+│   └── security/         # Microservicio de Seguridad
+│       ├── crypto_service.py  # Cifrado AES-256 y HMAC
+│       ├── services.py        # Comunicación segura entre microservicios
+│       ├── middleware.py      # Intercepta requests entre servicios
+│       └── decorators.py      # @audit_access para logging
+│
+├── provesi_wms/
+│   ├── settings.py       # Configuración Django + bases de datos
+│   ├── urls.py           # URLs principales
+│   ├── asgi.py           # Monta Django + FastAPI juntos
+│   ├── fastapi_app.py    # Configuración de FastAPI
+│   ├── mongodb.py        # Conexión a MongoDB
+│   └── db_routers.py     # Router para múltiples bases de datos
+│
+└── manage.py
+
+
+3. BASES DE DATOS
+================================================================================
+
+POSTGRESQL (provesi_orders)
+---------------------------
+- Almacena: Órdenes
+- Modelo: Django ORM (models.Model)
+- Tabla: orders_order
+- Campos:
+  * id (int, autoincrement)
+  * order_number (varchar, único)
+  * client_id (varchar) → Referencia a MongoDB ObjectId
+  * status (varchar): received, picking, packing, shipped, delivered, returned, cancelled
+  * return_reason (text, nullable)
+  * returned_at (datetime, nullable)
+  * created_at, updated_at
+
+MONGODB (provesi_clients)
+-------------------------
+- Almacena: Clientes
+- Modelo: MongoEngine (Document)
+- Colección: clients
+- Campos:
+  * _id (ObjectId, automático)
+  * name (string)
+  * email (string, único)
+  * phone (string)
+  * address (string)
+  * created_at, updated_at
+
+
+4. CLIENTES (apps/clients/)
+================================================================================
+
+BASE DE DATOS: MongoDB
+FRAMEWORK API: FastAPI
+FRAMEWORK HTML: Django
+
+models.py
+---------
+Define el modelo Client usando MongoEngine:
+- class Client(Document): Documento de MongoDB
+- Campos: name, email, phone, address, created_at, updated_at
+- Método to_dict(): Convierte a diccionario para APIs
+
+api.py (FastAPI)
+----------------
+Endpoints REST en /api/clients/:
+- GET /              → Lista todos los clientes
+- POST /             → Crea cliente (valida email único)
+- GET /{id}          → Obtiene cliente por ObjectId
+- PUT /{id}          → Actualiza cliente
+- DELETE /{id}       → Elimina cliente
+
+Usa Pydantic (schemas.py) para validación automática de datos.
+
+views.py (Django)
+-----------------
+Vistas HTML para el navegador:
+- client_list: Muestra tabla con clientes y conteo de órdenes
+- client_create: Formulario para crear cliente
+- client_detail: Detalle del cliente con sus órdenes
+- client_edit: Formulario para editar
+- client_delete: Confirmación de eliminación
+
+La comunicación con órdenes usa secure_order_service para consultar PostgreSQL.
+
+
+5. ÓRDENES (apps/orders/)
+================================================================================
+
+BASE DE DATOS: PostgreSQL
+FRAMEWORK API: FastAPI
+FRAMEWORK HTML: Django
+
+models.py
+---------
+Define el modelo Order usando Django ORM:
+- class Order(models.Model): Modelo relacional
+- client_id es CharField (guarda el ObjectId de MongoDB como string)
+- OrderStatus: Enum con estados posibles
+- Método get_client(): Consulta MongoDB para obtener el cliente
+
+api.py (FastAPI)
+----------------
+Endpoints REST en /api/orders/:
+- GET /              → Lista órdenes con datos de clientes
+- POST /             → Crea orden (valida que cliente exista en MongoDB)
+- GET /returns       → Lista solo devoluciones
+- GET /{number}      → Obtiene orden por número
+- PUT /{number}      → Actualiza orden (requiere return_reason si status=returned)
+- DELETE /{number}   → Elimina orden
+
+views.py (Django)
+-----------------
+Vistas HTML:
+- order_list: Tabla de órdenes con nombre del cliente
+- order_create: Formulario con selector de clientes (desde MongoDB)
+- order_edit: Edición con campo condicional para razón de devolución
+- order_delete: Confirmación
+- returns_list: Lista de órdenes devueltas con razones
+
+La comunicación con clientes usa secure_client_service para consultar MongoDB.
+
+
+6. DEVOLUCIONES
+================================================================================
+
+Las devoluciones son órdenes con status="returned".
+
+Campos especiales en Order:
+- return_reason: Texto obligatorio al marcar como devuelta
+- returned_at: Fecha/hora de la devolución
+
+Flujo:
+1. Usuario edita orden y selecciona estado "Devuelto"
+2. JavaScript muestra campo de razón de devolución
+3. Backend valida que return_reason no esté vacío
+4. Se guarda la orden con returned_at = now()
+
+Vista /orders/returns/:
+- Filtra Order.objects.filter(status='returned')
+- Muestra tarjetas con razón de devolución destacada
+
+
+7. SEGURIDAD (apps/security/)
+================================================================================
+
+crypto_service.py
+-----------------
+Implementa cifrado para datos sensibles:
+- AES-256-CBC: Cifrado simétrico con IV aleatorio
+- HMAC-SHA256: Verificación de integridad
+- Claves predefinidas (32 bytes cada una)
+
+Métodos:
+- encrypt_aes(texto) → "iv:ciphertext:hmac" en base64
+- decrypt_aes(cifrado) → texto original
+- create_secure_message(): Agrega timestamp y nonce
+- verify_and_decrypt_message(): Valida timestamp (5 min máx)
+
+services.py
+-----------
+Servicios para comunicación segura entre microservicios:
+
+SecureClientService:
+- get_client_secure(id): Obtiene cliente de MongoDB con logging
+- get_clients_for_orders(ids): Batch query para enriquecer órdenes
+
+SecureOrderService:
+- get_orders_for_client(id): Obtiene órdenes de PostgreSQL
+- get_orders_count_for_clients(ids): Conteo optimizado con GROUP BY
+
+decorators.py
+-------------
+- @audit_access(entity): Registra accesos en logs
+- @require_encrypted: Requiere comunicación cifrada
+- @encrypt_response: Cifra respuestas automáticamente
+
+middleware.py
+-------------
+MicroserviceSecurityMiddleware:
+- Intercepta requests entre microservicios
+- Valida headers: X-Microservice-Source, X-Service-Token
+- Descifra payloads si X-Encrypted-Payload está presente
+
+
+8. COMUNICACIÓN ENTRE MICROSERVICIOS
+================================================================================
+
+ÓRDENES → CLIENTES (PostgreSQL → MongoDB)
+-----------------------------------------
+Escenario: Mostrar nombre del cliente en lista de órdenes
+
+1. views.py llama get_all_clients() o secure_client_service
+2. SecureClientService consulta Client.objects (MongoEngine)
+3. MongoDB retorna documentos
+4. Se cachea en order._client_cache para el template
+
+Código:
+    from apps.clients.models import Client
+    clients = Client.objects.all()  # MongoEngine query
+
+CLIENTES → ÓRDENES (MongoDB → PostgreSQL)
+-----------------------------------------
+Escenario: Mostrar órdenes de un cliente en su detalle
+
+1. views.py llama secure_order_service.get_orders_for_client(id)
+2. SecureOrderService consulta Order.objects.using('orders_db')
+3. PostgreSQL retorna rows
+4. Se convierte a lista de diccionarios
+
+Código:
+    from apps.orders.models import Order
+    orders = Order.objects.using('orders_db').filter(client_id=client_id)
+
+RELACIÓN SIN FOREIGN KEY
+------------------------
+- Order.client_id es CharField (no ForeignKey)
+- Almacena el ObjectId de MongoDB como string "507f1f77bcf86cd799439011"
+- La integridad referencial se maneja en código, no en BD
+
+
+9. DJANGO + FASTAPI (provesi_wms/)
+================================================================================
+
+asgi.py
+-------
+Monta ambos frameworks en el mismo puerto:
+
+    async def application(scope, receive, send):
+        path = scope.get("path", "")
+        
+        if path.startswith("/api/") or path == "/openapi.json":
+            await fastapi_app(scope, receive, send)  # FastAPI
+        else:
+            await django_asgi_app(scope, receive, send)  # Django
+
+También inicializa MongoDB al arrancar:
+    from provesi_wms.mongodb import connect_mongodb
+    connect_mongodb()
+
+fastapi_app.py
+--------------
+Configura la aplicación FastAPI:
+- Importa routers de clients y orders
+- Configura CORS
+- Define /api/health global
+
+    fastapi_app = FastAPI(title="PROVESI WMS API")
+    fastapi_app.include_router(clients_router)
+    fastapi_app.include_router(orders_router)
+
+mongodb.py
+----------
+Conexión a MongoDB usando MongoEngine:
+
+    import mongoengine
+    mongoengine.connect(db='provesi_clients', host='localhost', port=27017)
+
+settings.py
+-----------
+Configuración de Django:
+- DATABASES: default (provesi_wms), orders_db (provesi_orders)
+- DATABASE_ROUTERS: Enruta orders a orders_db
+- INSTALLED_APPS: clients, orders, security
+- No incluye clients_db porque MongoDB no usa Django ORM
+
+
+10. FLUJO COMPLETO DE UNA OPERACIÓN
+================================================================================
+
+CREAR ORDEN CON CLIENTE:
+
+1. Usuario accede a /orders/create/ (Django view)
+2. View llama get_all_clients() → MongoDB retorna clientes
+3. Template muestra formulario con <select> de clientes
+4. Usuario selecciona cliente (ObjectId) y envía POST
+5. View valida con secure_client_service.get_client_secure(id)
+6. Si cliente existe, crea Order con client_id=ObjectId string
+7. Order.save(using='orders_db') → PostgreSQL
+8. Redirect a /orders/ con mensaje de éxito
+
+VER LISTA DE ÓRDENES:
+
+1. Usuario accede a /orders/ (Django view)
+2. View consulta Order.objects.using('orders_db').all()
+3. Extrae client_ids únicos de las órdenes
+4. Llama secure_client_service.get_clients_for_orders(ids)
+5. MongoDB retorna clientes en un dict {id: data}
+6. Se cachea en order._client_cache para cada orden
+7. Template itera órdenes mostrando order.client.name
+
+
+11. EJECUCIÓN
+================================================================================
+
+Comando:
+    uvicorn provesi_wms.asgi:application --reload
+
+Flujo de arranque:
+1. Django se inicializa (settings, apps)
+2. MongoDB se conecta (mongodb.py)
+3. FastAPI se configura (fastapi_app.py)
+4. ASGI application queda lista
+5. Uvicorn escucha en puerto 8000
+
+URLs activas:
+- http://127.0.0.1:8000/          → Django (home)
+- http://127.0.0.1:8000/clients/  → Django (HTML)
+- http://127.0.0.1:8000/orders/   → Django (HTML)
+- http://127.0.0.1:8000/api/docs  → FastAPI (Swagger)
+- http://127.0.0.1:8000/api/clients/ → FastAPI (JSON)
+- http://127.0.0.1:8000/api/orders/  → FastAPI (JSON)
+
+
+================================================================================
+                              FIN DEL DOCUMENTO
+================================================================================
