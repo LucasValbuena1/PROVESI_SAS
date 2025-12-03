@@ -179,7 +179,7 @@ resource "aws_security_group" "traffic_ssh" {
     Name = "${var.project_prefix}-traffic-ssh"
   })
 }
-#TODO: Aclarar lo de la creación de la db (provesi_wms también?)
+
 # Recurso. Define la instancia EC2 para la base de datos PostgreSQL de órdenes.
 # Esta instancia incluye un script de creación para instalar y configurar PostgreSQL.
 # El script crea un usuario y una base de datos, y ajusta la configuración para permitir conexiones remotas.
@@ -198,6 +198,7 @@ resource "aws_instance" "orders_db" {
               apt-get install -y postgresql postgresql-contrib
 
               sudo -u postgres psql -c "CREATE USER provesi WITH PASSWORD '1234';"
+              sudo -u postgres createdb -O provesi provesi_wms
               sudo -u postgres createdb -O provesi provesi_orders
               echo "host all all 0.0.0.0/0 trust" | sudo tee -a /etc/postgresql/16/main/pg_hba.conf
               echo "listen_addresses='*'" | sudo tee -a /etc/postgresql/16/main/postgresql.conf
