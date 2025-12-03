@@ -223,7 +223,17 @@ resource "aws_instance" "clients_db" {
   user_data = <<-EOT
               #!/bin/bash
 
-              docker run --restart=always -d -e POSTGRES_USER=measurements_user -e POSTGRES_DB=measurements_db -e POSTGRES_PASSWORD=isis2503 -p 5432:5432 --name measurements-db postgres
+              # Importar clave GPG
+              curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
+
+              # Agregar repositorio
+              echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] http://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+
+              # Instalar
+              sudo apt update
+              sudo apt install -y mongodb-org
+              sudo systemctl start mongod
+              sudo systemctl enable mongod
               EOT
 
   tags = merge(local.common_tags, {
