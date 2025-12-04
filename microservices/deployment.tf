@@ -184,7 +184,7 @@ resource "aws_security_group" "traffic_ssh" {
 # Esta instancia incluye un script de creación para instalar y configurar PostgreSQL.
 # El script crea un usuario y una base de datos, y ajusta la configuración para permitir conexiones remotas.
 resource "aws_instance" "orders_db" {
-  ami                         = "ami-051685736c7b35f95"
+  ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
   associate_public_ip_address = true
   vpc_security_group_ids      = [aws_security_group.traffic_db_postgres.id, aws_security_group.traffic_ssh.id]
@@ -200,9 +200,9 @@ resource "aws_instance" "orders_db" {
               sudo -u postgres psql -c "CREATE USER provesi WITH PASSWORD '1234';"
               sudo -u postgres createdb -O provesi provesi_wms
               sudo -u postgres createdb -O provesi provesi_orders
-              echo "host all all 0.0.0.0/0 trust" | sudo tee -a /etc/postgresql/16/main/pg_hba.conf
-              echo "listen_addresses='*'" | sudo tee -a /etc/postgresql/16/main/postgresql.conf
-              echo "max_connections=2000" | sudo tee -a /etc/postgresql/16/main/postgresql.conf
+              echo "host all all 0.0.0.0/0 trust" | sudo tee -a /etc/postgresql/15/main/pg_hba.conf
+              echo "listen_addresses='*'" | sudo tee -a /etc/postgresql/15/main/postgresql.conf
+              echo "max_connections=2000" | sudo tee -a /etc/postgresql/15/main/postgresql.conf
               sudo service postgresql restart
               EOT
 
@@ -211,11 +211,11 @@ resource "aws_instance" "orders_db" {
     Role = "orders-db"
   })
 }
-#TODO: Revisar como es la config de Mongo
+
 # Recurso. Define la instancia EC2 para la base de datos MongoDB de clientes (clients).
 # Esta instancia incluye un script de creación para instalar y configurar MongoDB.
 resource "aws_instance" "clients_db" {
-  ami                         = "ami-051685736c7b35f95"
+  ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
   associate_public_ip_address = true
   vpc_security_group_ids      = [aws_security_group.traffic_db_mongo.id, aws_security_group.traffic_ssh.id]
@@ -223,17 +223,17 @@ resource "aws_instance" "clients_db" {
   user_data = <<-EOT
               #!/bin/bash
 
-              # Importar clave GPG
-              curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
+              curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc \
+              | sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
 
-              # Agregar repositorio
-              echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] http://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+              echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] \
+              https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/7.0 multiverse" \
+              | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
 
-              # Instalar
-              sudo apt update
-              sudo apt install -y mongodb-org
-              sudo systemctl start mongod
-              sudo systemctl enable mongod
+              apt update -y
+              apt install -y mongodb-org
+              systemctl enable mongod
+              systemctl start mongod
               EOT
 
   tags = merge(local.common_tags, {
@@ -245,7 +245,7 @@ resource "aws_instance" "clients_db" {
 # Recurso. Define la instancia EC2 para el microservicio de clients (Fast API).
 # Esta instancia incluye un script de creación para instalar el microservicio de Clientes y aplicar las migraciones.
 resource "aws_instance" "clients_ms" {
-  ami                         = "ami-051685736c7b35f95"
+  ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
   associate_public_ip_address = true
   vpc_security_group_ids      = [aws_security_group.traffic_apps.id, aws_security_group.traffic_ssh.id]
@@ -322,35 +322,54 @@ resource "aws_instance" "orders_ms" {
 #TODO: Revisar la parte que tiene lo de Docker
 # Recurso. Define la instancia EC2 para Kong (API Gateway).
 resource "aws_instance" "kong" {
-  ami                         = "ami-051685736c7b35f95"
+  ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
   associate_public_ip_address = true
   vpc_security_group_ids      = [aws_security_group.traffic_api.id, aws_security_group.traffic_ssh.id]
 
   user_data = <<-EOT
               #!/bin/bash
+              set -euxo pipefail
 
-              sudo export CLIENTS_HOST=${aws_instance.clients_ms.private_ip}
+              # Exportar variables a nivel del sistema
               echo "CLIENTS_HOST=${aws_instance.clients_ms.private_ip}" | sudo tee -a /etc/environment
-              sudo export ORDERS_HOST=${aws_instance.orders_ms.private_ip}
               echo "ORDERS_HOST=${aws_instance.orders_ms.private_ip}" | sudo tee -a /etc/environment
 
+              # Actualizar e instalar herramientas
+              sudo apt-get update -y
+              sudo apt-get install -y git curl nano
 
-              sudo dnf install nano git -y
-              sudo mkdir /labs
+              # Descargar Kong Gateway OSS
+              curl -Lo kong.deb "https://download.konghq.com/gateway-3.x-ubuntu-focal/pool/all/k/kong/kong_3.6.1_amd64.deb"
+              sudo apt-get install -y ./kong.deb
+
+              # Preparar carpeta de trabajo
+              mkdir -p /labs
               cd /labs
-              sudo git clone https://github.com/LucasValbuena1/PROVESI_SAS.git
+
+              git clone https://github.com/LucasValbuena1/PROVESI_SAS.git || true
               cd PROVESI_SAS
 
-              # Configurar el archivo kong.yaml con las IPs de los microservicios
+              # Copiar archivo declarativo
+              sudo mkdir -p /etc/kong/
+              sudo cp kong.yaml /etc/kong/kong.yaml
 
-              sudo sed -i "s/<CLIENTS_HOST>/${aws_instance.variables_ms.private_ip}/g" kong.yaml
-              sudo sed -i "s/<ORDERS_HOST>/${aws_instance.measurements_ms.private_ip}/g" kong.yaml
-              docker network create kong-net
-              docker run -d --name kong --network=kong-net --restart=always \
-              -v "$(pwd):/kong/declarative/" -e "KONG_DATABASE=off" \
-              -e "KONG_DECLARATIVE_CONFIG=/kong/declarative/kong.yaml" \
-              -p 8000:8000 kong/kong-gateway
+              # Reemplazar hosts dentro del config
+              sudo sed -i "s|<CLIENTS_HOST>|${aws_instance.clients_ms.private_ip}|g" /etc/kong/kong.yaml
+              sudo sed -i "s|<ORDERS_HOST>|${aws_instance.orders_ms.private_ip}|g" /etc/kong/kong.yaml
+
+              # Configuración sin base de datos
+              export KONG_DATABASE=off
+              export KONG_DECLARATIVE_CONFIG=/etc/kong/kong.yaml
+
+              # Validar configuración
+              sudo kong check /etc/kong/kong.yaml
+
+              # Iniciar Kong
+              sudo kong start
+
+              # Habilitar servicio al reiniciar
+              sudo systemctl enable kong
               EOT
 
   tags = merge(local.common_tags, {
@@ -358,7 +377,7 @@ resource "aws_instance" "kong" {
     Role = "api-gateway"
   })
 
-  depends_on = [aws_instance.variables_ms, aws_instance.measurements_ms]
+  depends_on = [aws_instance.clients_ms, aws_instance.orders_ms]
 }
 
 # Salida. Muestra la dirección IP pública de la instancia de Kong (API Gateway).
