@@ -13,6 +13,10 @@ Puerto único: 8000
 - Rutas /api/* → FastAPI (APIs REST)
 - Rutas /* → Django (Vistas HTML)
 
+Bases de datos:
+- PostgreSQL (provesi_orders) → Órdenes
+- MongoDB (provesi_clients) → Clientes
+
 
 2. ESTRUCTURA DE CARPETAS
 ================================================================================
@@ -42,12 +46,11 @@ PROVESI_SAS/
 │       └── decorators.py      # @audit_access para logging
 │
 ├── provesi_wms/
-│   ├── settings.py       # Configuración Django + bases de datos
+│   ├── settings.py       # Configuración Django (solo PostgreSQL)
 │   ├── urls.py           # URLs principales
 │   ├── asgi.py           # Monta Django + FastAPI juntos
 │   ├── fastapi_app.py    # Configuración de FastAPI
-│   ├── mongodb.py        # Conexión a MongoDB
-│   └── db_routers.py     # Router para múltiples bases de datos
+│   └── mongodb.py        # Conexión a MongoDB
 │
 └── manage.py
 
@@ -57,6 +60,7 @@ PROVESI_SAS/
 
 POSTGRESQL (provesi_orders)
 ---------------------------
+- Configurada en: settings.py como 'default'
 - Almacena: Órdenes
 - Modelo: Django ORM (models.Model)
 - Tabla: orders_order
@@ -71,6 +75,7 @@ POSTGRESQL (provesi_orders)
 
 MONGODB (provesi_clients)
 -------------------------
+- Configurada en: mongodb.py
 - Almacena: Clientes
 - Modelo: MongoEngine (Document)
 - Colección: clients
@@ -240,13 +245,13 @@ CLIENTES → ÓRDENES (MongoDB → PostgreSQL)
 Escenario: Mostrar órdenes de un cliente en su detalle
 
 1. views.py llama secure_order_service.get_orders_for_client(id)
-2. SecureOrderService consulta Order.objects.using('orders_db')
+2. SecureOrderService consulta Order.objects.filter(...)
 3. PostgreSQL retorna rows
 4. Se convierte a lista de diccionarios
 
 Código:
     from apps.orders.models import Order
-    orders = Order.objects.using('orders_db').filter(client_id=client_id)
+    orders = Order.objects.filter(client_id=client_id)
 
 RELACIÓN SIN FOREIGN KEY
 ------------------------
@@ -257,6 +262,20 @@ RELACIÓN SIN FOREIGN KEY
 
 9. DJANGO + FASTAPI (provesi_wms/)
 ================================================================================
+
+settings.py
+-----------
+Configuración de Django con una sola base de datos:
+
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': 'provesi_orders',
+            ...
+        },
+    }
+
+MongoDB no se configura aquí, sino en mongodb.py.
 
 asgi.py
 -------
@@ -292,14 +311,6 @@ Conexión a MongoDB usando MongoEngine:
     import mongoengine
     mongoengine.connect(db='provesi_clients', host='localhost', port=27017)
 
-settings.py
------------
-Configuración de Django:
-- DATABASES: default (provesi_wms), orders_db (provesi_orders)
-- DATABASE_ROUTERS: Enruta orders a orders_db
-- INSTALLED_APPS: clients, orders, security
-- No incluye clients_db porque MongoDB no usa Django ORM
-
 
 10. FLUJO COMPLETO DE UNA OPERACIÓN
 ================================================================================
@@ -312,13 +323,13 @@ CREAR ORDEN CON CLIENTE:
 4. Usuario selecciona cliente (ObjectId) y envía POST
 5. View valida con secure_client_service.get_client_secure(id)
 6. Si cliente existe, crea Order con client_id=ObjectId string
-7. Order.save(using='orders_db') → PostgreSQL
+7. Order.save() → PostgreSQL (provesi_orders)
 8. Redirect a /orders/ con mensaje de éxito
 
 VER LISTA DE ÓRDENES:
 
 1. Usuario accede a /orders/ (Django view)
-2. View consulta Order.objects.using('orders_db').all()
+2. View consulta Order.objects.all() → PostgreSQL
 3. Extrae client_ids únicos de las órdenes
 4. Llama secure_client_service.get_clients_for_orders(ids)
 5. MongoDB retorna clientes en un dict {id: data}
@@ -331,6 +342,9 @@ VER LISTA DE ÓRDENES:
 
 Comando:
     uvicorn provesi_wms.asgi:application --reload
+
+Migraciones (solo PostgreSQL):
+    python manage.py migrate
 
 Flujo de arranque:
 1. Django se inicializa (settings, apps)

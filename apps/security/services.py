@@ -2,7 +2,8 @@
 Servicios de seguridad para comunicación entre microservicios.
 
 Provee acceso seguro a datos entre:
-- Orders (PostgreSQL) <-> Clients (MongoDB)
+- Orders (PostgreSQL - provesi_orders)
+- Clients (MongoDB - provesi_clients)
 """
 
 import logging
@@ -31,7 +32,6 @@ class SecureClientService:
         from bson import ObjectId
         
         try:
-            # Validar ObjectId
             ObjectId(client_id)
         except:
             logger.warning(f"[SECURITY] ID de cliente inválido: {client_id}")
@@ -73,7 +73,6 @@ class SecureClientService:
         if not client_ids:
             return {}
         
-        # Filtrar IDs válidos
         valid_ids = []
         for cid in client_ids:
             try:
@@ -114,7 +113,7 @@ class SecureOrderService:
         from apps.orders.models import Order
         
         try:
-            orders = Order.objects.using('orders_db').filter(client_id=client_id)
+            orders = Order.objects.filter(client_id=client_id)
             result = []
             for order in orders:
                 result.append({
@@ -149,7 +148,7 @@ class SecureOrderService:
         
         try:
             counts = (
-                Order.objects.using('orders_db')
+                Order.objects
                 .filter(client_id__in=client_ids)
                 .values('client_id')
                 .annotate(count=Count('id'))
@@ -197,7 +196,7 @@ class SecureDataService:
                 try:
                     result[field] = crypto_service.decrypt_aes(result[field])
                 except:
-                    pass  # Si falla, mantener el valor original
+                    pass
         
         return result
 

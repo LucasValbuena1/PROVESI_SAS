@@ -116,7 +116,7 @@ def delete_client(client_id: str):
     
     # Desasociar órdenes
     from apps.orders.models import Order
-    Order.objects.using('orders_db').filter(client_id=client_id).update(client_id=None)
+    Order.objects.filter(client_id=client_id).update(client_id=None)
     
     client.delete()
     return {"status": "success", "message": "Cliente eliminado"}

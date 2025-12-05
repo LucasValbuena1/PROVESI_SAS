@@ -1,4 +1,4 @@
-"""API FastAPI para el microservicio de Órdenes (PostgreSQL + MongoDB clients)."""
+"""API FastAPI para el microservicio de Órdenes."""
 
 import re
 from fastapi import APIRouter, HTTPException
@@ -30,9 +30,8 @@ def order_to_dict(order: Order) -> dict:
 @router.get("/")
 def list_orders():
     """Lista todas las órdenes."""
-    orders = Order.objects.using('orders_db').all()
+    orders = Order.objects.all()
     
-    # Obtener client_ids únicos (ahora son strings)
     client_ids = list(set(o.client_id for o in orders if o.client_id))
     clients_map = secure_client_service.get_clients_for_orders(client_ids)
     
@@ -49,14 +48,12 @@ def list_orders():
 @router.post("/", status_code=201)
 def create_order(order: OrderCreate):
     """Crea una nueva orden."""
-    # Validar formato
     if not re.match(r"^[A-Za-z0-9\-]+$", order.order_number):
         raise HTTPException(status_code=400, detail="El código solo puede contener letras, números y guiones")
     
-    if Order.objects.using('orders_db').filter(order_number__iexact=order.order_number).exists():
+    if Order.objects.filter(order_number__iexact=order.order_number).exists():
         raise HTTPException(status_code=400, detail="El número de orden ya existe")
     
-    # Validar cliente (ahora es string ID de MongoDB)
     client_id = None
     if order.client_id:
         client = secure_client_service.get_client_secure(order.client_id)
@@ -69,7 +66,7 @@ def create_order(order: OrderCreate):
         client_id=client_id,
         status=order.status.value
     )
-    new_order.save(using='orders_db')
+    new_order.save()
     
     return {"status": "success", "data": order_to_dict(new_order)}
 
@@ -77,11 +74,10 @@ def create_order(order: OrderCreate):
 @router.get("/returns")
 def list_returns():
     """Lista todas las órdenes devueltas."""
-    orders = Order.objects.using('orders_db').filter(
+    orders = Order.objects.filter(
         status=DjangoOrderStatus.RETURNED
     ).order_by('-returned_at', '-updated_at')
     
-    # Obtener clientes
     client_ids = list(set(o.client_id for o in orders if o.client_id))
     clients_map = secure_client_service.get_clients_for_orders(client_ids)
     
@@ -99,7 +95,7 @@ def list_returns():
 def get_order(order_number: str):
     """Obtiene una orden por número."""
     try:
-        order = Order.objects.using('orders_db').get(order_number=order_number)
+        order = Order.objects.get(order_number=order_number)
         order_data = order_to_dict(order)
         
         if order.client_id:
@@ -116,18 +112,17 @@ def get_order(order_number: str):
 def update_order(order_number: str, order_data: OrderUpdate):
     """Actualiza una orden."""
     try:
-        order = Order.objects.using('orders_db').get(order_number=order_number)
+        order = Order.objects.get(order_number=order_number)
         
         if order_data.order_number is not None:
             if not re.match(r"^[A-Za-z0-9\-]+$", order_data.order_number):
                 raise HTTPException(status_code=400, detail="El código solo puede contener letras, números y guiones")
             if order_data.order_number.lower() != order.order_number.lower():
-                if Order.objects.using('orders_db').filter(order_number__iexact=order_data.order_number).exists():
+                if Order.objects.filter(order_number__iexact=order_data.order_number).exists():
                     raise HTTPException(status_code=400, detail="El número de orden ya existe")
             order.order_number = order_data.order_number
         
         if order_data.status is not None:
-            # Si cambia a devuelto, requiere razón
             if order_data.status == OrderStatus.returned:
                 if not order_data.return_reason:
                     raise HTTPException(status_code=400, detail="return_reason es requerido para estado devuelto")
@@ -144,7 +139,7 @@ def update_order(order_number: str, order_data: OrderUpdate):
             else:
                 order.client_id = None
         
-        order.save(using='orders_db')
+        order.save()
         
         return {"status": "success", "data": order_to_dict(order)}
         
@@ -156,8 +151,8 @@ def update_order(order_number: str, order_data: OrderUpdate):
 def delete_order(order_number: str):
     """Elimina una orden."""
     try:
-        order = Order.objects.using('orders_db').get(order_number=order_number)
-        order.delete(using='orders_db')
+        order = Order.objects.get(order_number=order_number)
+        order.delete()
         return {"status": "success", "message": "Orden eliminada"}
     except Order.DoesNotExist:
         raise HTTPException(status_code=404, detail="Orden no encontrada")
@@ -167,7 +162,7 @@ def delete_order(order_number: str):
 def health():
     """Health check del microservicio de órdenes."""
     try:
-        Order.objects.using('orders_db').first()
+        Order.objects.first()
         db_status = "connected"
     except Exception as e:
         db_status = f"error: {str(e)}"
@@ -175,6 +170,6 @@ def health():
     return {
         "service": "orders",
         "status": "ok" if db_status == "connected" else "error",
-        "database": "PostgreSQL",
+        "database": "PostgreSQL (provesi_orders)",
         "connection": db_status
     }

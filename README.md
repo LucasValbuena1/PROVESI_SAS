@@ -11,7 +11,7 @@ Sistema de gestión de órdenes y clientes con arquitectura de microservicios.
 ├─────────────────────────────────────────────────────┤
 │                                                     │
 │   ┌─────────────────┐         ┌─────────────────┐   │
-│   │    CLIENTES     │         │    ÓRDENES      │   │
+│   │    CLIENTES     │         │     ÓRDENES     │   │
 │   │    (FastAPI)    │◄───────►│    (FastAPI)    │   │
 │   └────────┬────────┘         └────────┬────────┘   │
 │            │                           │            │
@@ -94,7 +94,7 @@ sudo systemctl enable mongod
 ### 1. Clonar e instalar dependencias
 
 ```bash
-git clone https://github.com/LucasValbuena1/PROVESI_SAS.git
+git clone <url-del-repositorio>
 cd PROVESI_SAS
 
 python -m venv .venv
@@ -113,22 +113,19 @@ pip install -r requirements.txt
 #### Mac/Linux
 ```bash
 psql postgres -c "CREATE USER provesi WITH PASSWORD '1234';"
-psql postgres -c "CREATE DATABASE provesi_wms OWNER provesi;"
 psql postgres -c "CREATE DATABASE provesi_orders OWNER provesi;"
 ```
 
 #### Windows (PowerShell como Administrador)
 ```powershell
 psql -U postgres -c "CREATE USER provesi WITH PASSWORD '1234';"
-psql -U postgres -c "CREATE DATABASE provesi_wms OWNER provesi;"
 psql -U postgres -c "CREATE DATABASE provesi_orders OWNER provesi;"
 ```
 
 ### 3. Aplicar migraciones
 
 ```bash
-python manage.py migrate --database=default
-python manage.py migrate --database=orders_db
+python manage.py migrate
 ```
 
 **Nota:** MongoDB no requiere migraciones. La base de datos `provesi_clients` se crea automáticamente.

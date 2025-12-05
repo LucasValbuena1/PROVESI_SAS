@@ -1,61 +1,39 @@
 {% extends "clients/base.html" %}
 
-{% block title %}Eliminar Cliente - PROVESI SAS{% endblock %}
+{% block title %}Eliminar {{ client.name }} - PROVESI SAS{% endblock %}
 {% block header_title %}Eliminar Cliente{% endblock %}
 
 {% block back_link %}
-<a href="{% url 'client-list' %}" class="back-link">← Volver a clientes</a>
+<a href="{% url 'client-list' %}" class="back-link">← Volver a la lista</a>
 {% endblock %}
 
 {% block content %}
-<div style="text-align: center; padding: 1rem 0;">
-    <div style="font-size: 4rem; margin-bottom: 1rem;">⚠️</div>
-    
-    <h2 style="color: #d32f2f; margin-bottom: 1rem;">¿Eliminar este cliente?</h2>
-    
-    <div style="background: #f9f9f9; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; text-align: left;">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-            <span style="color: #666; font-weight: 600;">Nombre:</span>
-            <span><strong>{{ client.name }}</strong></span>
-        </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-            <span style="color: #666; font-weight: 600;">Email:</span>
-            <span>{{ client.email }}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-            <span style="color: #666; font-weight: 600;">Teléfono:</span>
-            <span>{{ client.phone|default:"-" }}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between;">
-            <span style="color: #666; font-weight: 600;">Pedidos asociados:</span>
-            <span>
-                {% if orders_count > 0 %}
-                    <span style="background: #fff3e0; color: #f57c00; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.85rem;">
-                        {{ orders_count }} pedido{{ orders_count|pluralize:"s" }}
-                    </span>
-                {% else %}
-                    <span style="color: #999;">Ninguno</span>
-                {% endif %}
-            </span>
-        </div>
+<div style="max-width: 600px; margin: 0 auto;">
+    <div class="warning-card">
+        <h3>⚠️ Confirmar Eliminación</h3>
+        <p>¿Está seguro que desea eliminar al cliente <strong>{{ client.name }}</strong>?</p>
+        
+        {% if orders_count > 0 %}
+        <p style="margin-top: 1rem;">
+            <strong>⚠️ Advertencia:</strong> Este cliente tiene <strong>{{ orders_count }}</strong> orden(es) asociada(s). 
+            Las órdenes no serán eliminadas, pero quedarán sin cliente asignado.
+        </p>
+        {% endif %}
     </div>
-    
-    {% if orders_count > 0 %}
-    <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 1rem; border-radius: 4px; margin-bottom: 1.5rem; text-align: left;">
-        <strong style="color: #856404;">Nota:</strong>
-        <span style="color: #856404;">Los {{ orders_count }} pedido{{ orders_count|pluralize:"s" }} de este cliente quedarán sin cliente asignado.</span>
+
+    <div class="info-card">
+        <h3>Datos del cliente</h3>
+        <p><strong>Nombre:</strong> {{ client.name }}</p>
+        <p><strong>Email:</strong> {{ client.email }}</p>
+        <p><strong>Teléfono:</strong> {{ client.phone|default:"No registrado" }}</p>
+        <p><strong>Dirección:</strong> {{ client.address|default:"No registrada" }}</p>
     </div>
-    {% endif %}
-    
-    <p style="color: #666; margin-bottom: 1.5rem;">
-        Esta acción no se puede deshacer.
-    </p>
-    
-    <form method="post" action="{% url 'client-delete' client.id %}" style="display: inline;">
+
+    <form method="post" action="{% url 'client-delete' client.id %}">
         {% csrf_token %}
-        <div class="btn-group" style="justify-content: center;">
-            <button type="submit" class="btn btn-danger">Sí, Eliminar</button>
-            <a href="{% url 'client-list' %}" class="btn btn-secondary">Cancelar</a>
+        <div class="btn-group">
+            <button type="submit" class="btn btn-danger">🗑️ Sí, Eliminar Cliente</button>
+            <a href="{% url 'client-detail' client.id %}" class="btn btn-secondary">Cancelar</a>
         </div>
     </form>
 </div>

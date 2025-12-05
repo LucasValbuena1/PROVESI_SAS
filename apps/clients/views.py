@@ -169,7 +169,7 @@ def client_delete(request, client_id):
         
         # Desasociar órdenes
         from apps.orders.models import Order
-        Order.objects.using('orders_db').filter(client_id=client_id).update(client_id=None)
+        Order.objects.filter(client_id=client_id).update(client_id=None)
         
         client.delete()
         
@@ -223,10 +223,10 @@ def health(request):
     
     # Verificar PostgreSQL (orders)
     try:
-        Order.objects.using('orders_db').first()
-        health_status["databases"]["orders_db"] = "connected (secure)"
+        Order.objects.first()
+        health_status["databases"]["postgresql"] = "connected"
     except Exception as e:
-        health_status["databases"]["orders_db"] = f"error: {str(e)}"
+        health_status["databases"]["postgresql"] = f"error: {str(e)}"
         health_status["ok"] = False
     
     return JsonResponse(health_status)

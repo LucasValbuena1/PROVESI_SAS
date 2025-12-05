@@ -1,8 +1,8 @@
 """
 Vistas del microservicio de Órdenes.
 
-Implementa comunicación con el microservicio de Clientes (MongoDB)
-a través del servicio de seguridad.
+Base de datos: PostgreSQL (default)
+Comunicación con Clientes: MongoDB via secure_client_service
 """
 
 import logging
@@ -49,7 +49,6 @@ def enrich_orders_with_clients(orders):
     for order in orders:
         if order.client_id and order.client_id in clients_map:
             client_data = clients_map[order.client_id]
-            # Crear objeto proxy para el template
             order._client_cache = type('Client', (), {
                 'id': client_data.get('id'),
                 'name': client_data.get('name'),
@@ -60,10 +59,6 @@ def enrich_orders_with_clients(orders):
     
     return orders
 
-
-# =====================
-# VISTAS DE ÓRDENES
-# =====================
 
 @audit_access('order')
 def order_lookup(request):
@@ -76,7 +71,7 @@ def order_lookup(request):
             messages.error(request, "Código de orden inválido.")
             return render(request, "orders/lookup.html", {"query": q, "not_found": True})
         
-        order = Order.objects.using('orders_db').filter(order_number__iexact=q).first()
+        order = Order.objects.filter(order_number__iexact=q).first()
         
         if order:
             if order.client_id:
@@ -104,11 +99,10 @@ def order_lookup(request):
 @audit_access('order')
 def order_list(request):
     """Lista todas las órdenes."""
-    orders = list(Order.objects.using('orders_db').all().order_by('-updated_at'))
+    orders = list(Order.objects.all().order_by('-updated_at'))
     enrich_orders_with_clients(orders)
     
-    # Contar devoluciones
-    returns_count = Order.objects.using('orders_db').filter(status=OrderStatus.RETURNED).count()
+    returns_count = Order.objects.filter(status=OrderStatus.RETURNED).count()
     
     return render(request, "orders/list.html", {
         "orders": orders,
@@ -134,11 +128,10 @@ def order_create(request):
             messages.error(request, "El código solo puede contener letras, números y guiones.")
             return render(request, "orders/create.html", {"statuses": OrderStatus.choices, "clients": clients})
         
-        if Order.objects.using('orders_db').filter(order_number__iexact=order_number).exists():
+        if Order.objects.filter(order_number__iexact=order_number).exists():
             messages.error(request, f"Ya existe una orden con el código '{order_number}'.")
             return render(request, "orders/create.html", {"statuses": OrderStatus.choices, "clients": clients})
         
-        # Validar cliente si se seleccionó
         if client_id:
             client_data = secure_client_service.get_client_secure(client_id)
             if not client_data:
@@ -150,7 +143,7 @@ def order_create(request):
             status=status_value,
             client_id=client_id if client_id else None
         )
-        order.save(using='orders_db')
+        order.save()
         
         logger.info(f"[ORDERS] Orden {order_number} creada con cliente {client_id}")
         messages.success(request, f"Orden '{order_number}' creada exitosamente.")
@@ -163,14 +156,13 @@ def order_create(request):
 def order_edit(request, order_number):
     """Editar una orden existente."""
     try:
-        order = Order.objects.using('orders_db').get(order_number=order_number)
+        order = Order.objects.get(order_number=order_number)
     except Order.DoesNotExist:
         messages.error(request, f"No se encontró la orden '{order_number}'.")
         return redirect("order-list")
     
     clients = get_all_clients()
     
-    # Obtener cliente actual
     if order.client_id:
         client_data = secure_client_service.get_client_secure(order.client_id)
         if client_data:
@@ -194,28 +186,24 @@ def order_edit(request, order_number):
             return render(request, "orders/edit.html", {"order": order, "statuses": OrderStatus.choices, "clients": clients})
         
         if new_order_number.lower() != order.order_number.lower():
-            if Order.objects.using('orders_db').filter(order_number__iexact=new_order_number).exists():
+            if Order.objects.filter(order_number__iexact=new_order_number).exists():
                 messages.error(request, f"Ya existe una orden con el código '{new_order_number}'.")
                 return render(request, "orders/edit.html", {"order": order, "statuses": OrderStatus.choices, "clients": clients})
         
-        # Validar cliente
         if client_id:
             client_data = secure_client_service.get_client_secure(client_id)
             if not client_data:
                 messages.error(request, "El cliente seleccionado no existe.")
                 return render(request, "orders/edit.html", {"order": order, "statuses": OrderStatus.choices, "clients": clients})
         
-        # Validar razón de devolución
         if status_value == OrderStatus.RETURNED and not return_reason:
             messages.error(request, "Debe ingresar una razón de devolución.")
             return render(request, "orders/edit.html", {"order": order, "statuses": OrderStatus.choices, "clients": clients})
         
-        # Actualizar orden
         order.order_number = new_order_number
         order.status = status_value
         order.client_id = client_id if client_id else None
         
-        # Manejar devolución
         if status_value == OrderStatus.RETURNED:
             order.return_reason = return_reason
             if not order.returned_at:
@@ -224,7 +212,7 @@ def order_edit(request, order_number):
             order.return_reason = None
             order.returned_at = None
         
-        order.save(using='orders_db')
+        order.save()
         
         logger.info(f"[ORDERS] Orden {new_order_number} actualizada - Estado: {status_value}")
         messages.success(request, f"Orden '{new_order_number}' actualizada exitosamente.")
@@ -237,7 +225,7 @@ def order_edit(request, order_number):
 def order_delete(request, order_number):
     """Eliminar una orden."""
     try:
-        order = Order.objects.using('orders_db').get(order_number=order_number)
+        order = Order.objects.get(order_number=order_number)
     except Order.DoesNotExist:
         messages.error(request, f"No se encontró la orden '{order_number}'.")
         return redirect("order-list")
@@ -252,7 +240,7 @@ def order_delete(request, order_number):
     
     if request.method == "POST":
         order_num = order.order_number
-        order.delete(using='orders_db')
+        order.delete()
         
         logger.info(f"[ORDERS] Orden {order_num} eliminada")
         messages.success(request, f"Orden '{order_num}' eliminada exitosamente.")
@@ -261,16 +249,11 @@ def order_delete(request, order_number):
     return render(request, "orders/delete.html", {"order": order})
 
 
-# =====================
-# DEVOLUCIONES
-# =====================
-
 @audit_access('order')
 def returns_list(request):
     """Lista todas las órdenes devueltas con sus razones."""
     orders = list(
-        Order.objects.using('orders_db')
-        .filter(status=OrderStatus.RETURNED)
+        Order.objects.filter(status=OrderStatus.RETURNED)
         .order_by('-returned_at', '-updated_at')
     )
     
@@ -280,17 +263,13 @@ def returns_list(request):
     return render(request, "orders/returns.html", {"orders": orders})
 
 
-# =====================
-# API
-# =====================
-
 @api_view(["GET"])
 @never_cache
 @audit_access('order')
 def order_status_api(request, order_number: str):
     """API para obtener estado de una orden."""
     try:
-        order = Order.objects.using('orders_db').get(order_number=order_number)
+        order = Order.objects.get(order_number=order_number)
     except Order.DoesNotExist:
         return Response({"error": "Orden no encontrada"}, status=status.HTTP_404_NOT_FOUND)
     
@@ -324,21 +303,20 @@ def health(request):
         "ok": True,
         "service": "orders",
         "databases": {},
-        "security": "enabled"
     }
     
     try:
-        Order.objects.using('orders_db').first()
-        health_status["databases"]["orders_db"] = "connected (PostgreSQL)"
+        Order.objects.first()
+        health_status["databases"]["postgresql"] = "connected (provesi_orders)"
     except Exception as e:
-        health_status["databases"]["orders_db"] = f"error: {str(e)}"
+        health_status["databases"]["postgresql"] = f"error: {str(e)}"
         health_status["ok"] = False
     
     try:
         Client.objects.first()
-        health_status["databases"]["clients"] = "connected (MongoDB)"
+        health_status["databases"]["mongodb"] = "connected (provesi_clients)"
     except Exception as e:
-        health_status["databases"]["clients"] = f"error: {str(e)}"
+        health_status["databases"]["mongodb"] = f"error: {str(e)}"
         health_status["ok"] = False
     
     return JsonResponse(health_status)

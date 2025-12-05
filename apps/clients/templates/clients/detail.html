@@ -4,45 +4,42 @@
 {% block header_title %}Detalle del Cliente{% endblock %}
 
 {% block back_link %}
-<a href="{% url 'client-list' %}" class="back-link">← Volver a clientes</a>
+<a href="{% url 'client-list' %}" class="back-link">← Volver a la lista</a>
 {% endblock %}
 
 {% block content %}
-<div style="margin-bottom: 2rem;">
-    <div style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+<!-- Información del cliente -->
+<div class="info-card">
+    <h3>👤 {{ client.name }}</h3>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
         <div>
-            <h2 style="color: #333; margin-bottom: 0.5rem;">{{ client.name }}</h2>
-            <p style="color: #666; margin: 0;">{{ client.email }}</p>
+            <p><strong>📧 Email:</strong></p>
+            <p>{{ client.email }}</p>
         </div>
-        <div class="actions">
-            <a href="{% url 'client-edit' client.id %}" class="btn btn-primary">Editar</a>
-            <a href="{% url 'client-delete' client.id %}" class="btn btn-danger">Eliminar</a>
+        <div>
+            <p><strong>📱 Teléfono:</strong></p>
+            <p>{{ client.phone|default:"No registrado" }}</p>
+        </div>
+        <div>
+            <p><strong>📍 Dirección:</strong></p>
+            <p>{{ client.address|default:"No registrada" }}</p>
+        </div>
+        <div>
+            <p><strong>📅 Registrado:</strong></p>
+            <p class="timestamp">{{ client.created_at|date:"d/m/Y H:i" }}</p>
         </div>
     </div>
     
-    <div style="background: #f9f9f9; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem;">
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
-            <div>
-                <span style="color: #666; font-size: 0.85rem;">Teléfono</span>
-                <p style="margin: 0.25rem 0 0 0; font-weight: 600;">{{ client.phone|default:"No registrado" }}</p>
-            </div>
-            <div>
-                <span style="color: #666; font-size: 0.85rem;">Dirección</span>
-                <p style="margin: 0.25rem 0 0 0; font-weight: 600;">{{ client.address|default:"No registrada" }}</p>
-            </div>
-            <div>
-                <span style="color: #666; font-size: 0.85rem;">Cliente desde</span>
-                <p style="margin: 0.25rem 0 0 0; font-weight: 600;">{{ client.created_at|date:"d/m/Y" }}</p>
-            </div>
-        </div>
+    <div class="btn-group" style="margin-top: 1.5rem;">
+        <a href="{% url 'client-edit' client.id %}" class="btn btn-primary">✏️ Editar</a>
+        <a href="{% url 'client-delete' client.id %}" class="btn btn-danger">🗑️ Eliminar</a>
     </div>
 </div>
 
-<hr class="divider">
-
-<div style="display: flex; justify-content: space-between; align-items: center; margin: 1.5rem 0; flex-wrap: wrap; gap: 1rem;">
-    <h3 style="color: #333; margin: 0;">Pedidos ({{ orders|length }})</h3>
-    <a href="{% url 'order-create' %}" class="btn btn-success" style="font-size: 0.9rem;">+ Nuevo Pedido</a>
+<!-- Órdenes del cliente -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+    <h3 style="color: #667eea;">📦 Órdenes Asociadas ({{ orders|length }})</h3>
+    <a href="{% url 'order-create' %}" class="btn btn-success">+ Nueva Orden</a>
 </div>
 
 {% if orders %}
@@ -51,34 +48,37 @@
             <tr>
                 <th>Código</th>
                 <th>Estado</th>
+                <th>Fecha Creación</th>
                 <th>Última Actualización</th>
-                <th>Acciones</th>
             </tr>
         </thead>
         <tbody>
             {% for order in orders %}
             <tr>
                 <td data-label="Código">
-                    <strong>{{ order.order_number }}</strong>
+                    <a href="{% url 'order-edit' order.order_number %}" style="color: #667eea; text-decoration: none; font-weight: 500;">
+                        {{ order.order_number }}
+                    </a>
                 </td>
                 <td data-label="Estado">
                     <span class="status-badge status-{{ order.status }}">
                         {{ order.get_status_display }}
                     </span>
                 </td>
-                <td data-label="Actualización" class="timestamp">
-                    {{ order.updated_at|date:"d/m/Y H:i" }}
+                <td data-label="Creación" class="timestamp">
+                    {{ order.created_at }}
                 </td>
-                <td data-label="Acciones" class="actions">
-                    <a href="{% url 'order-edit' order.order_number %}" class="btn btn-primary">Editar</a>
+                <td data-label="Actualización" class="timestamp">
+                    {{ order.updated_at }}
                 </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 {% else %}
-    <div class="empty-state" style="padding: 2rem;">
-        <p style="color: #999;">Este cliente no tiene pedidos.</p>
+    <div class="empty-state" style="background: #f8f9fa; border-radius: 12px;">
+        <p>Este cliente no tiene órdenes asociadas.</p>
+        <a href="{% url 'order-create' %}" class="btn btn-success">Crear primera orden</a>
     </div>
 {% endif %}
 {% endblock %}

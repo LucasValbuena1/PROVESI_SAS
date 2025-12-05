@@ -13,7 +13,7 @@ class OrderStatus(models.TextChoices):
 
 class Order(models.Model):
     """
-    Modelo de Orden.
+    Modelo de Orden almacenado en PostgreSQL (provesi_orders).
     
     Nota: client_id es un CharField para almacenar el ObjectId de MongoDB.
     La relación se maneja a nivel de aplicación, no de base de datos.
@@ -52,9 +52,7 @@ class Order(models.Model):
         return f"{self.order_number} - {self.status}"
 
     def get_client(self):
-        """
-        Obtiene el cliente desde MongoDB.
-        """
+        """Obtiene el cliente desde MongoDB."""
         if not self.client_id:
             return None
         

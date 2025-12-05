@@ -1,16 +1,15 @@
 {% extends "clients/base.html" %}
 
-{% block title %}Clientes - PROVESI SAS{% endblock %}
+{% block title %}Lista de Clientes - PROVESI SAS{% endblock %}
 {% block header_title %}Gestión de Clientes{% endblock %}
-
-{% block back_link %}
-<a href="{% url 'order-list' %}" class="back-link">← Volver a órdenes</a>
-{% endblock %}
 
 {% block content %}
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
     <p style="color: #666; margin: 0;">Total: <strong>{{ clients|length }}</strong> clientes</p>
-    <a href="{% url 'client-create' %}" class="btn btn-success">+ Nuevo Cliente</a>
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <a href="{% url 'order-list' %}" class="btn btn-secondary">📦 Órdenes</a>
+        <a href="{% url 'client-create' %}" class="btn btn-success">+ Nuevo Cliente</a>
+    </div>
 </div>
 
 {% if clients %}
@@ -20,7 +19,7 @@
                 <th>Nombre</th>
                 <th>Email</th>
                 <th>Teléfono</th>
-                <th>Pedidos</th>
+                <th>Órdenes</th>
                 <th>Acciones</th>
             </tr>
         </thead>
@@ -28,16 +27,14 @@
             {% for client in clients %}
             <tr>
                 <td data-label="Nombre">
-                    <a href="{% url 'client-detail' client.id %}" style="color: #667eea; text-decoration: none; font-weight: 600;">
+                    <a href="{% url 'client-detail' client.id %}" style="color: #667eea; text-decoration: none; font-weight: 500;">
                         {{ client.name }}
                     </a>
                 </td>
                 <td data-label="Email">{{ client.email }}</td>
                 <td data-label="Teléfono">{{ client.phone|default:"-" }}</td>
-                <td data-label="Pedidos">
-                    <span style="background: #e3f2fd; color: #1976d2; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.85rem;">
-                        {{ client.orders_count }}
-                    </span>
+                <td data-label="Órdenes">
+                    <span class="status-badge badge-info">{{ client.orders_count }} órdenes</span>
                 </td>
                 <td data-label="Acciones" class="actions">
                     <a href="{% url 'client-detail' client.id %}" class="btn btn-secondary">Ver</a>
@@ -51,7 +48,7 @@
 {% else %}
     <div class="empty-state">
         <p>No hay clientes registrados.</p>
-        <a href="{% url 'client-create' %}" class="btn btn-success">Crear primer cliente</a>
+        <a href="{% url 'client-create' %}" class="btn btn-success" style="margin-top: 1rem;">Crear primer cliente</a>
     </div>
 {% endif %}
 {% endblock %}
