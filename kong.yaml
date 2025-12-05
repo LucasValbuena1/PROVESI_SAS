@@ -1,0 +1,31 @@
+_format_version: "2.1"
+
+services:
+  - name: clients_service
+    host: clients_upstream
+    protocol: http
+    routes:
+      - name: clients
+        paths:
+          - /clients
+        strip_path: false
+
+  - name: orders_service
+    host: orders_upstream
+    protocol: http
+    routes:
+      - name: orders
+        paths:
+          - /orders
+        strip_path: false
+    
+upstreams:
+  - name: clients_upstream
+    targets:
+      - target: <CLIENTS_HOST>:8080
+        weight: 100
+
+  - name: orders_upstream
+    targets:
+      - target: <ORDERS_HOST>:8080
+        weight: 100
